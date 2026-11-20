@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hive</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="theme-color" content="#050F1E" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Hive" />
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+</script>
+<style>
+:root{--bg:#070d1a;--panel:#111b2e;--line:#22304a;--text:#eef2ff;--muted:#8b97b5;--accent:#ffb800;--ok:#34d399;--bad:#f87171;--chip:#1d2a45}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text)}
+header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:14px 22px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+.brand{font-weight:900;font-size:22px;color:var(--accent);letter-spacing:.5px}
+main{max-width:1100px;margin:0 auto;padding:22px}
+.hidden{display:none!important}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+.card h3{margin:0 0 10px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.muted{color:var(--muted);font-size:14px}
+.btn{background:var(--accent);color:#111;border:1px solid var(--accent);border-radius:10px;padding:9px 14px;font:inherit;font-weight:700;cursor:pointer;display:inline-block}
+.btn.ghost{background:transparent;color:var(--text);border-color:var(--line);font-weight:600}
+.btn.ghost.active{background:var(--accent);color:#111;border-color:var(--accent)}
+.btn.bad{background:var(--bad);border-color:var(--bad)}
+input,textarea,select{background:#0c1426;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px;font:inherit;width:100%}
+input[type=checkbox]{width:auto}
+textarea{min-height:110px;resize:vertical}
+.badge{display:inline-block;font-size:12px;padding:3px 9px;border-radius:999px;background:var(--chip);color:var(--muted);margin:2px 4px 2px 0}
+.badge.yes{background:#3a2d00;color:var(--accent)}
+.bar{height:8px;background:var(--chip);border-radius:99px;overflow:hidden}
+.bar>div{height:100%;background:var(--accent);transition:width .3s}
+.thumbs{display:flex;gap:10px;flex-wrap:wrap}
+.thumb{width:140px;background:#0c1426;border:1px solid var(--line);border-radius:10px;padding:6px;font-size:12px}
+.thumb img{width:100%;height:90px;object-fit:cover;border-radius:6px}
+.task{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.task.done>span{text-decoration:line-through;color:var(--muted)}
+.big{font-size:52px;font-weight:900;font-variant-numeric:tabular-nums}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:20;padding:16px}
+.overlay.open{display:flex}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;width:min(900px,100%);max-height:90vh;overflow:auto}
+.week{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.day{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:150px}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;width:min(360px,100%);margin:14px 0}
+.tile{aspect-ratio:1;background-size:300% 300%;border-radius:6px;cursor:pointer;border:1px solid var(--line)}
+.tile.empty{background:#0c1426;cursor:default}
+.word{letter-spacing:8px;font-size:30px;font-weight:800;color:var(--accent);margin:14px 0}
+.opt{display:block;width:100%;text-align:left;margin:6px 0;background:#0c1426;border:1px solid var(--line);color:var(--text);padding:10px 12px;border-radius:10px;cursor:pointer;font:inherit}
+.opt.right{border-color:var(--ok);color:var(--ok)}
+.opt.wrong{border-color:var(--bad);color:var(--bad)}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--accent);color:#111;padding:10px 16px;border-radius:10px;font-weight:700;display:none;z-index:50}
+@media(max-width:640px){main{padding:14px}.big{font-size:40px}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">hive</div>
+  <nav class="row">
+    <button class="btn ghost active" data-view="capture">Capture</button>
+    <button class="btn ghost" data-view="ideas">Ideas</button>
+    <button class="btn ghost" data-view="today">Today</button>
+    <button class="btn ghost" data-view="week">Week</button>
+    <button class="btn ghost" data-view="play">Play</button>
+  </nav>
+</header>
+
+<main>
+  <section id="capture">
+    <div class="card">
+      <h3>Dump anything</h3>
+      <input id="newTitle" placeholder="Title (optional)" />
+      <textarea id="newBody" placeholder="Brain dump. Half sentences, plans, links, rough thoughts..." style="margin-top:10px"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button class="btn ghost" id="recBtn">🎙 Voice note</button>
+        <button class="btn ghost" id="sketchBtn">✏️ Sketch</button>
+        <label class="btn ghost" style="cursor:pointer">📎 Photo, screenshot or file
+          <input type="file" id="fileIn" multiple accept="image/*,audio/*,.pdf,.txt,.md,.doc,.docx" hidden />
+        </label>
+        <span class="muted">Tip: press Ctrl+V to paste a screenshot.</span>
+      </div>
+      <div id="pendingList" class="thumbs" style="margin-top:12px"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" id="saveIdea">Save to Inbox</button></div>
+    </div>
+    <div class="card"><h3>Latest</h3><div id="recent"></div></div>
+  </section>
+
+  <section id="ideas" class="hidden">
+    <div class="row" style="margin-bottom:14px">
+      <input id="search" placeholder="Search ideas..." style="flex:2;min-width:180px" />
+      <select id="statusFilter" style="flex:1;min-width:120px">
+        <option value="all">All status</option><option value="inbox">Inbox</option><option value="active">Active</option><option value="done">Done</option>
+      </select>
+      <select id="catFilter" style="flex:1;min-width:120px">
+        <option value="all">All categories</option><option>Study</option><option>Creative</option><option>Business</option><option>Build</option><option>Personal</option><option>General</option>
+      </select>
+      <button class="btn ghost" id="exportBtn">Export backup</button>
+      <label class="btn ghost" style="cursor:pointer">Restore backup
+        <input type="file" id="restoreFile" accept="application/json,.json" hidden />
+      </label>
+    </div>
+    <div id="ideaList" class="grid"></div>
+  </section>
+
+  <section id="today" class="hidden"></section>
+  <section id="week" class="hidden"></section>
+  <section id="play" class="hidden"></section>
+</main>
+
+<div class="overlay" id="ideaOverlay"><div class="modal" id="ideaBody"></div></div>
+
+<div class="overlay" id="gameOverlay">
+  <div class="modal">
+    <div class="row" style="justify-content:space-between">
+      <h3 id="gameTitle" style="margin:0"></h3>
+      <button class="btn ghost" id="gameClose">Close</button>
+    </div>
+    <div id="gameBody" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<div class="overlay" id="sketchOverlay">
+  <div class="modal">
+    <h3>Sketch</h3>
+    <canvas id="sketchCanvas" width="800" height="500" style="width:100%;background:#fff;border-radius:10px"></canvas>
+    <div class="row" style="justify-content:flex-end;margin-top:10px">
+      <button class="btn ghost" id="clearSketch">Clear</button>
+      <button class="btn ghost" id="cancelSketch">Cancel</button>
+      <button class="btn" id="saveSketch">Add sketch</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- helpers ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+const pad = n => String(n).padStart(2, '0');
+const todayISO = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const localStamp = d => `${todayISO(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const fmt = s => `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
+const toast = msg => { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = 'none', 2200); };
+const openOv = id => $('#' + id).classList.add('open');
+const closeOv = id => $('#' + id).classList.remove('open');
+
+const GAMES = { quest: 'Quest Board', scramble: 'Word Scramble', quiz: 'Recall Quiz', puzzle: 'Picture Puzzle' };
+const CATS = {
+  Study: ['learn', 'study', 'exam', 'class', 'lecture', 'read', 'memorize', 'course', 'quiz', 'notes', 'chapter', 'homework', 'vocabulary', 'lesson'],
+  Creative: ['design', 'draw', 'sketch', 'write', 'video', 'music', 'art', 'story', 'film', 'photo', 'paint', 'poem', 'script'],
+  Business: ['client', 'sell', 'sales', 'market', 'launch', 'startup', 'pitch', 'invoice', 'customer', 'revenue', 'price', 'pricing', 'brand', 'product'],
+  Build: ['app', 'code', 'build', 'feature', 'api', 'bug', 'deploy', 'database', 'website', 'page', 'software', 'backend', 'frontend', 'server'],
+  Personal: ['health', 'gym', 'home', 'family', 'friend', 'habit', 'sleep', 'diet', 'travel', 'budget', 'money', 'trip', 'birthday']
+};
+const STOP = new Set(`the a an and or but of to in on for with is are was were be been it this that i you we they he she my our your their at by from as so if then than there here not no do does did have has had will would can could should just about into over also more very all any some when what which who how why its it's i'm get got make made like need want one new out up down off each every much many still way going go`.split(/\s+/));
+const CLARIFY = [['what', 'What exactly is it?'], ['why', 'Why does it matter?'], ['done', 'What does "done" look like?'], ['next', 'What is the very next action?'], ['blocker', 'What could block it?']];
+const byPriority = (a, b) => a.priority - b.priority || b.createdAt - a.createdAt;
+
+/* ---------- storage (IndexedDB, keeps blobs too) ---------- */
+let db = null;
+let state = { ideas: [], xp: 0, focus: 0, days: {} };
+let pending = [];
+let currentId = null, addTarget = 'pending';
+const timer = { left: 25 * 60, run: null };
+const urls = new Map();
+
+const openDB = () => new Promise((res, rej) => {
+  const r = indexedDB.open('hive', 1);
+  r.onupgradeneeded = () => r.result.createObjectStore('kv');
+  r.onsuccess = () => res(r.result);
+  r.onerror = () => rej(r.error);
+});
+const dbGet = k => new Promise(res => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); });
+const dbPut = (k, v) => new Promise((res, rej) => {
+  const tx = db.transaction('kv', 'readwrite');
+  tx.objectStore('kv').put(v, k);
+  tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+});
+let saveTimer;
+window.hiveLatest = null;
+function announce() { window.hiveLatest = state; window.dispatchEvent(new CustomEvent('hive:saved')); }
+const save = () => { if (!db) return; clearTimeout(saveTimer); saveTimer = setTimeout(async () => { await dbPut('state', state); announce(); }, 150); };
+/* ---------- idea model ---------- */
+const getIdea = id => state.ideas.find(i => i.id === id);
+const newIdea = o => ({ id: uid(), title: '', body: '', attachments: [], tags: [], status: 'inbox', priority: 2, due: '', createdAt: Date.now(), clarify: { what: '', why: '', done: '', next: '', blocker: '' }, tasks: [], game: 'auto', ...o });
+const markDay = () => (state.days[todayISO()] ||= { done: 0, focus: 0, checkin: '' });
+const allText = i => [i.title, i.body, ...i.attachments.map(a => a.text || '')].join(' ');
+const words = t => (t.toLowerCase().match(/[a-z][a-z'-]+/g) || []);
+const sentences = i => allText(i).split(/(?<=[.!?])\s+|\n+/).map(s => s.trim()).filter(s => s.length > 15);
+const overdue = i => !!i.due && i.due < todayISO() && i.status !== 'done';
+const progress = i => i.tasks.length ? Math.round(i.tasks.filter(t => t.done).length / i.tasks.length * 100) : (i.status === 'done' ? 100 : 0);
+const clarity = i => Math.round(Object.values(i.clarify).filter(v => v && v.trim()).length / 5 * 60 + (i.tasks.length ? 25 : 0) + (i.due ? 15 : 0));
+const openTasks = () => state.ideas.filter(i => i.status !== 'done').sort(byPriority).flatMap(i => i.tasks.filter(k => !k.done).map(k => ({ i, k })));
+
+function keywords(i) {
+  const f = {};
+  for (const w of words(allText(i))) if (w.length >= 4 && !STOP.has(w)) f[w] = (f[w] || 0) + 1;
+  return Object.entries(f).sort((a, b) => b[1] - a[1] || b[0].length - a[0].length).map(e => e[0]);
+}
+function categoryOf(i) {
+  const set = new Set(words(allText(i)));
+  let best = 'General', score = 0;
+  for (const [c, list] of Object.entries(CATS)) {
+    const s = list.filter(w => set.has(w)).length;
+    if (s > score) { score = s; best = c; }
+  }
+  return best;
+}
+function recommend(i) {
+  if (i.attachments.some(a => a.kind === 'image' || a.kind === 'sketch'))
+    return { game: 'puzzle', reason: 'You attached a picture or sketch, so it can become a sliding puzzle.' };
+  if (categoryOf(i) === 'Study')
+    return { game: 'quiz', reason: 'This is study material. A recall quiz locks the key terms in.' };
+  if (i.tasks.length >= 3)
+    return { game: 'quest', reason: 'Several steps. Turn each one into a quest and level up.' };
+  if (keywords(i).length >= 10)
+    return { game: 'quiz', reason: 'Lots of key terms. A recall quiz helps you remember them.' };
+  return { game: 'scramble', reason: 'Short idea. A word scramble pulls out the key terms.' };
+}
+function autoSteps(i) {
+  const verbs = /\b(need|needs|should|must|will|build|write|create|make|call|send|buy|finish|plan|research|draft|design|check|review|book|prepare|schedule|learn|read|practice|practise|test|fix|set up|launch|record)\b/i;
+  const out = [];
+  (i.body || '').split('\n').forEach(raw => {
+    const isBullet = /^\s*([-*•]|\d+[.)])\s+/.test(raw);
+    const line = raw.replace(/^\s*([-*•]|\d+[.)])\s+/, '').trim();
+    if (!line) return;
+    if (isBullet) return out.push(line);
+    line.split(/(?<=[.!?])\s+/).forEach(s => { if (verbs.test(s)) out.push(s.replace(/[.!?]+$/, '').trim()); });
+  });
+  const existing = new Set(i.tasks.map(t => t.text.toLowerCase()));
+  return [...new Set(out)].filter(s => s && !existing.has(s.toLowerCase())).slice(0, 8)
+    .map(text => ({ id: uid(), text: text.slice(0, 120), done: false, mins: 30, scheduled: '' }));
+}
+function summarize(i) {
+  const c = i.clarify, first = sentences(i)[0] || i.title;
+  const next = c.next || i.tasks.find(t => !t.done)?.text || 'not set yet';
+  return `${i.title}: ${first}${c.why ? ' Why: ' + c.why + '.' : ''}${c.done ? ' Done when: ' + c.done + '.' : ''} Next action: ${next}.${c.blocker ? ' Watch out for: ' + c.blocker + '.' : ''}`;
+}
+function toggleTask(iid, tid) {
+  const i = getIdea(iid), k = i && i.tasks.find(t => t.id === tid);
+  if (!k) return;
+  k.done = !k.done;
+  if (k.done) {
+    state.xp += 10; markDay().done++;
+    if (i.tasks.every(t => t.done)) { i.status = 'done'; toast('Idea complete! 🎉 +10 XP'); }
+    else toast('+10 XP');
+  } else {
+    state.xp = Math.max(0, state.xp - 10);
+    if (i.status === 'done') i.status = 'active';
+  }
+  save(); renderAll();
+  if (currentId === iid && $('#ideaOverlay').classList.contains('open')) renderIdea();
+}
+
+/* ---------- attachments ---------- */
+const urlFor = a => {
+  if (!a.blob) return '';
+  if (!urls.has(a.id)) urls.set(a.id, URL.createObjectURL(a.blob));
+  return urls.get(a.id);
+};
+const fileToAtt = f => ({ id: uid(), kind: f.type.startsWith('image/') ? 'image' : f.type.startsWith('audio/') ? 'audio' : 'file', name: f.name, blob: f });
+function addAttachment(target, att) {
+  if (target === 'pending') { pending.push(att); renderPending(); return; }
+  const i = getIdea(target); if (!i) return;
+  i.attachments.push(att); save(); renderIdea(); renderAll();
+}
+function attHTML(a, ideaId) {
+  const src = urlFor(a);
+  let media;
+  if (!src) media = `<div class="muted" style="height:90px;display:flex;align-items:center;justify-content:center;text-align:center">File not in backup</div>`;
+  else if (a.kind === 'image' || a.kind === 'sketch') media = `<img src="${src}" alt="" />`;
+  else if (a.kind === 'audio') media = `<audio controls src="${src}" style="width:120px"></audio>`;
+  else media = `<a href="${src}" download="${esc(a.name)}" style="display:block;text-align:center;font-size:30px;text-decoration:none">📄</a>`;
+  const ocr = ideaId && src && (a.kind === 'image' || a.kind === 'sketch') ? `<button class="btn ghost" data-ocr="${a.id}" style="padding:3px 8px;margin-top:6px">Read text</button>` : '';
+  const txt = a.text ? `<div class="muted" style="max-height:54px;overflow:hidden;margin-top:4px">${esc(a.text.slice(0, 140))}</div>` : '';
+  return `<div class="thumb">${media}<div style="margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name || a.kind)}</div>${txt}${ocr}<button class="btn ghost" data-del-att="${a.id}" style="padding:3px 8px;margin-top:6px">Remove</button></div>`;
+}
+
+/* ---------- OCR: local files first, CDN fallback ---------- */
+const OCR_LOCAL = 'vendor/tesseract/';
+const OCR_CDN = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/';
+let ocrReady = null, ocrOptions = {};
+
+async function fileExists(url) {
+  try { return (await fetch(url, { method: 'HEAD', cache: 'no-store' })).ok; }
+  catch { return false; }
+}
+function addScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = res;
+    s.onerror = () => rej(new Error('Could not load ' + src));
+    document.head.appendChild(s);
+  });
+}
+function loadOCR() {
+  if (window.Tesseract) return Promise.resolve();
+  if (!ocrReady) ocrReady = (async () => {
+    const local = await fileExists(OCR_LOCAL + 'tesseract.min.js') && await fileExists(OCR_LOCAL + 'worker.min.js');
+    if (local) {
+      ocrOptions = { workerPath: OCR_LOCAL + 'worker.min.js', corePath: OCR_LOCAL, langPath: OCR_LOCAL + 'lang/', gzip: true };
+      await addScript(OCR_LOCAL + 'tesseract.min.js');
+    } else {
+      ocrOptions = {};
+      await addScript(OCR_CDN + 'tesseract.min.js');
+    }
+  })().catch(err => { ocrReady = null; throw err; });
+  return ocrReady;
+}
+async function recognizeText(blob) {
+  await loadOCR();
+  try {
+    const { data } = await Tesseract.recognize(blob, 'eng', ocrOptions);
+    return data.text;
+  } catch (err) {
+    if (!ocrOptions.workerPath) throw err;
+    // Local files were incomplete. Retry with the CDN.
+    ocrOptions = {};
+    const { data } = await Tesseract.recognize(blob, 'eng');
+    return data.text;
+  }
+}
+async function runOCR(i, att) {
+  if (!att || !att.blob) return;
+  try {
+    toast('Reading text…');
+    att.text = (await recognizeText(att.blob)).trim();
+    save(); renderIdea(); renderAll();
+    toast(att.text ? 'Text added to this idea' : 'No readable text found');
+  } catch (err) {
+    toast('Read text needs internet, or the offline OCR files in vendor/tesseract');
+  }
+}
+
+/* ---------- rendering: capture ---------- */
+function renderPending() { $('#pendingList').innerHTML = pending.map(a => attHTML(a, null)).join(''); }
+function renderRecent() {
+  $('#recent').innerHTML = state.ideas.slice(0, 5).map(i =>
+    `<div class="task"><span data-open="${i.id}" style="flex:1;cursor:pointer">${esc(i.title)}</span><span class="badge">${categoryOf(i)}</span></div>`
+  ).join('') || '<p class="muted">Your inbox is empty. Start dumping.</p>';
+}
+
+/* ---------- rendering: ideas ---------- */
+function cardHTML(i) {
+  const late = overdue(i);
+  const tags = keywords(i).slice(0, 3).map(k => `<span class="badge">#${esc(k)}</span>`).join('');
+  return `<div class="card" data-open="${i.id}" style="cursor:pointer;margin:0">
+    <div class="row" style="justify-content:space-between"><span class="badge">${categoryOf(i)}</span><span class="badge">${i.status}</span></div>
+    <h3 style="margin:10px 0 6px">${esc(i.title)}</h3>
+    <p class="muted" style="margin:0 0 10px;min-height:40px">${esc(i.body.slice(0, 120))}</p>
+    <div class="bar"><div style="width:${progress(i)}%"></div></div>
+    <div class="row" style="margin-top:10px">
+      ${tags}
+      ${i.attachments.length ? `<span class="badge">📎 ${i.attachments.length}</span>` : ''}
+      ${i.due ? `<span class="badge ${late ? '' : 'yes'}">${late ? '⚠ Overdue' : 'Due ' + i.due}</span>` : ''}
+      <span class="badge">Clarity ${clarity(i)}%</span>
+      <span class="badge">🎮 ${GAMES[recommend(i).game]}</span>
+    </div></div>`;
+}
+function renderIdeas() {
+  const q = $('#search').value.trim().toLowerCase(), st = $('#statusFilter').value, cf = $('#catFilter').value;
+  const list = state.ideas
+    .filter(i => (st === 'all' || i.status === st) && (cf === 'all' || categoryOf(i) === cf) && (!q || allText(i).toLowerCase().includes(q)))
+    .sort(byPriority);
+  $('#ideaList').innerHTML = list.map(cardHTML).join('') || '<p class="muted">Nothing here yet. Dump an idea on the Capture tab.</p>';
+}
+
+/* ---------- idea detail modal ---------- */
+const taskHTML = k => `<div class="task ${k.done ? 'done' : ''}" data-task="${k.id}">
+  <input type="checkbox" data-tdone ${k.done ? 'checked' : ''} />
+  <span style="flex:1">${esc(k.text)} <span class="muted">· ${k.mins}m</span></span>
+  <input type="datetime-local" data-tsched value="${k.scheduled || ''}" style="width:auto" />
+  <button class="btn ghost" data-tdel>✕</button></div>`;
+
+function renderIdea() {
+  const i = getIdea(currentId); if (!i) return;
+  const rec = recommend(i);
+  $('#ideaBody').innerHTML = `
+    <div class="row" style="justify-content:space-between">
+      <div class="row"><span class="badge">${categoryOf(i)}</span><span class="badge">Clarity ${clarity(i)}%</span></div>
+      <button class="btn ghost" id="closeIdea">Close</button>
+    </div>
+    <input id="eTitle" value="${esc(i.title)}" style="margin-top:12px;font-size:20px;font-weight:700" />
+    <textarea id="eBody" style="margin-top:10px;min-height:130px">${esc(i.body)}</textarea>
+    <div class="row" style="margin-top:10px">
+      <select id="eStatus" style="width:auto">${['inbox', 'active', 'done'].map(s => `<option ${s === i.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
+      <select id="ePriority" style="width:auto">${[[1, 'High'], [2, 'Medium'], [3, 'Low']].map(([v, l]) => `<option value="${v}" ${v === i.priority ? 'selected' : ''}>${l} priority</option>`).join('')}</select>
+      <input type="date" id="eDue" value="${i.due}" style="width:auto" />
+    </div>
+
+    <div class="card" style="margin-top:14px"><h3>Attachments</h3>
+      <div class="thumbs">${i.attachments.map(a => attHTML(a, i.id)).join('') || '<span class="muted">Nothing attached yet.</span>'}</div>
+      <div class="row" style="margin-top:12px">
+        <label class="btn ghost" style="cursor:pointer">+ File<input type="file" id="eFile" multiple accept="image/*,audio/*,.pdf,.txt,.md,.doc,.docx" hidden /></label>
+        <button class="btn ghost" id="mSketch">+ Sketch</button>
+      </div>
+    </div>
+
+    <div class="card"><h3>Clarify</h3>
+      <p class="muted">Answer these five. Vague ideas become plans once they are specific.</p>
+      ${CLARIFY.map(([k, l]) => `<label class="muted" style="display:block;margin:10px 0 4px">${l}</label><input data-clar="${k}" value="${esc(i.clarify[k])}" />`).join('')}
+      <div class="row" style="margin-top:12px"><button class="btn ghost" id="summarize">Summarize</button><span id="summary" class="muted"></span></div>
+    </div>
+
+    <div class="card"><h3>Plan <span class="badge">${i.tasks.length} steps</span></h3>
+      <div class="bar"><div style="width:${progress(i)}%"></div></div>
+      <div style="margin-top:8px">${i.tasks.map(taskHTML).join('') || '<p class="muted">No steps yet.</p>'}</div>
+      <div class="row" style="margin-top:12px">
+        <input id="newTask" placeholder="Add a step" style="flex:1;min-width:160px" />
+        <input type="number" id="newMins" value="30" min="5" step="5" style="width:90px" />
+        <button class="btn" id="addTask">Add</button>
+        <button class="btn ghost" id="autoSteps">Suggest steps</button>
+      </div>
+    </div>
+
+    <div class="card"><h3>Turn it into a game</h3>
+      <p class="muted">Recommended: <b>${GAMES[rec.game]}</b>. ${rec.reason}</p>
+      <div class="row">
+        <select id="gameSel" style="flex:1">
+          <option value="auto" ${i.game === 'auto' ? 'selected' : ''}>Auto (recommended)</option>
+          ${Object.entries(GAMES).map(([k, v]) => `<option value="${k}" ${i.game === k ? 'selected' : ''}>${v}</option>`).join('')}
+        </select>
+        <button class="btn" id="playBtn">▶ Play</button>
+      </div>
+    </div>
+    <div class="row" style="justify-content:flex-end"><button class="btn bad" id="deleteIdea">Delete idea</button></div>`;
+}
+function openIdea(id) { currentId = id; renderIdea(); openOv('ideaOverlay'); }
+
+/* ---------- Today ---------- */
+const isActiveDay = k => state.days[k] && (state.days[k].done > 0 || state.days[k].focus > 0);
+function streak() {
+  const d = new Date(); let n = 0;
+  if (!isActiveDay(todayISO(d))) d.setDate(d.getDate() - 1);
+  while (isActiveDay(todayISO(d))) { n++; d.setDate(d.getDate() - 1); }
+  return n;
+}
+const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning.' : h < 18 ? 'Good afternoon.' : 'Good evening.'; };
+
+function renderToday() {
+  const t = todayISO(), d = markDay();
+  const items = [];
+  for (const i of state.ideas) for (const k of i.tasks) if (k.scheduled && k.scheduled.slice(0, 10) === t) items.push({ i, k });
+  items.sort((a, b) => a.k.scheduled.localeCompare(b.k.scheduled));
+  const next = items.find(x => !x.k.done) || openTasks()[0];
+  const late = state.ideas.filter(overdue);
+  const lvl = Math.floor(state.xp / 100) + 1;
+  $('#today').innerHTML = `
+    <div class="row" style="justify-content:space-between;margin-bottom:14px">
+      <div>
+        <h2 style="margin:0">${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h2>
+        <p class="muted" style="margin:4px 0 0">${greeting()} Let's keep it simple today.</p>
+      </div>
+      <div class="row"><span class="badge yes">Level ${lvl}</span><span class="badge">${state.xp} XP</span><span class="badge">🔥 ${streak()} day streak</span></div>
+    </div>
+    <div class="card"><label class="muted">One thing that matters today</label>
+      <input id="checkin" value="${esc(d.checkin)}" placeholder="Pick one. Just one." style="margin-top:6px" /></div>
+    <div class="grid">
+      <div class="card"><h3>Next up</h3>${next ? `
+        <p class="muted" style="margin:0">${esc(next.i.title)}</p>
+        <h3 style="margin:6px 0 12px">${esc(next.k.text)}</h3>
+        <div class="row">
+          <button class="btn" data-tog="${next.i.id}|${next.k.id}">${next.k.done ? 'Undo' : 'Mark done'}</button>
+          <button class="btn ghost" data-open="${next.i.id}">Open</button>
+        </div>` : '<p class="muted">Nothing queued. Add steps to an idea, then use Auto-plan in Week.</p>'}
+      </div>
+      <div class="card"><h3>Focus timer</h3>
+        <div class="big" id="timerDisplay">${fmt(timer.left)}</div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn" id="timerBtn" data-timer="toggle">${timer.run ? 'Pause' : 'Start'}</button>
+          <button class="btn ghost" data-timer="reset">Reset</button>
+        </div>
+        <p class="muted">25 minute sessions · Today: ${d.focus}</p>
+      </div>
+      <div class="card"><h3>Overdue</h3>${late.length
+        ? late.map(i => `<div class="task"><span data-open="${i.id}" style="flex:1;cursor:pointer">${esc(i.title)}</span><span class="badge">due ${i.due}</span></div>`).join('')
+        : '<p class="muted">Nothing overdue. Nice.</p>'}</div>
+    </div>
+    <div class="card" style="margin-top:14px"><h3>Today's schedule</h3>
+      ${items.map(({ i, k }) => `<div class="task ${k.done ? 'done' : ''}">
+        <input type="checkbox" data-tog="${i.id}|${k.id}" ${k.done ? 'checked' : ''} />
+        <span style="flex:1"><span class="muted">${k.scheduled.slice(11)}</span> ${esc(k.text)} <span class="muted">· ${esc(i.title)}</span></span></div>`).join('')
+        || '<p class="muted">Nothing scheduled for today. Open Week and tap Auto-plan.</p>'}
+    </div>`;
+  $('#checkin').onchange = e => { markDay().checkin = e.target.value; save(); };
+}
+
+/* ---------- notifications (work on phones via the service worker) ---------- */
+async function notify(title, body, tag) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return false;
+  try {
+    const reg = navigator.serviceWorker ? await navigator.serviceWorker.ready : null;
+    if (reg && reg.showNotification) {
+      await reg.showNotification(title, { body, tag, icon: 'icons/icon-192.png' });
+    } else {
+      new Notification(title, { body, tag, icon: 'icons/icon-192.png' });
+    }
+    return true;
+  } catch { return false; }
+}
+
+/* ---------- focus timer ---------- */
+function toggleTimer() {
+  if (timer.run) { clearInterval(timer.run); timer.run = null; }
+  else {
+    if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+    timer.run = setInterval(tick, 1000);
+  }
+  updateTimerUI();
+}
+function resetTimer() { clearInterval(timer.run); timer.run = null; timer.left = 25 * 60; updateTimerUI(); }
+function tick() {
+  timer.left--;
+  if (timer.left <= 0) {
+    clearInterval(timer.run); timer.run = null; timer.left = 25 * 60;
+    state.focus++; markDay().focus++; state.xp += 5; save();
+    notify('Hive', 'Focus session done. Take a short break.', 'focus-' + Date.now());
+    toast('Focus session done! +5 XP');
+    renderAll(); return;
+  }
+  updateTimerUI();
+}
+function updateTimerUI() {
+  const d = $('#timerDisplay'), b = $('#timerBtn');
+  if (d) d.textContent = fmt(timer.left);
+  if (b) b.textContent = timer.run ? 'Pause' : 'Start';
+}
+
+/* ---------- reminders for scheduled steps ---------- */
+const FIRED_KEY = 'hive-fired';
+const REMIND_WINDOW = 5 * 60 * 1000;   // fire only if due in the last 5 minutes
+let fired = new Set();
+try { fired = new Set(JSON.parse(localStorage.getItem(FIRED_KEY) || '[]')); } catch {}
+
+async function enableReminders() {
+  if (!window.hivePush) return toast('Reminders are still loading. Try again in a moment.');
+  toast(await window.hivePush.enable());
+}
+function checkReminders() {
+  if (!state || !Array.isArray(state.ideas)) return;
+  const now = Date.now();
+  for (const idea of state.ideas) for (const t of idea.tasks || []) {
+    if (!t.scheduled || t.done) continue;
+    const at = new Date(t.scheduled).getTime();
+    if (isNaN(at)) continue;
+    const key = `${t.id}@${t.scheduled}`;
+    if (at <= now && at > now - REMIND_WINDOW && !fired.has(key)) {
+      fired.add(key);
+      localStorage.setItem(FIRED_KEY, JSON.stringify([...fired].slice(-200)));
+      notify('Hive: ' + idea.title, t.text, key);
+      toast('⏰ ' + t.text);
+    }
+  }
+}
+
+/* ---------- Week ---------- */
+function autoPlan() {
+  const queue = openTasks().filter(({ k }) => !k.scheduled);
+  if (!queue.length) return toast('Nothing to plan. Add steps first.');
+  let cur = new Date(); cur.setMinutes(0, 0, 0); cur.setHours(cur.getHours() + 1);
+  if (cur.getHours() < 9) cur.setHours(9, 0, 0, 0);
+  if (cur.getHours() >= 18) { cur.setDate(cur.getDate() + 1); cur.setHours(9, 0, 0, 0); }
+  for (const { k } of queue) {
+    k.scheduled = localStamp(cur);
+    cur = new Date(cur.getTime() + (k.mins || 30) * 60000);
+    if (cur.getHours() >= 18) { cur.setDate(cur.getDate() + 1); cur.setHours(9, 0, 0, 0); }
+  }
+  save(); renderAll();
+  toast(`Planned ${queue.length} step${queue.length === 1 ? '' : 's'}`);
+}
+function renderWeek() {
+  const days = [...Array(7)].map((_, n) => { const d = new Date(); d.setDate(d.getDate() + n); return d; });
+  const unscheduled = openTasks().filter(({ k }) => !k.scheduled).length;
+  $('#week').innerHTML = `
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <p class="muted" style="margin:0">${unscheduled} steps waiting for a time slot. Set exact times in each idea.</p>
+      <div class="row">
+        <button class="btn ghost" data-reminders>🔔 Enable reminders</button>
+        <button class="btn" data-autoplan>✨ Auto-plan my week</button>
+      </div>
+    </div>
+    <div class="week">${days.map(d => {
+      const k = todayISO(d), items = [];
+      for (const i of state.ideas) for (const t of i.tasks) if (t.scheduled && t.scheduled.slice(0, 10) === k) items.push({ i, t });
+      items.sort((a, b) => a.t.scheduled.localeCompare(b.t.scheduled));
+      return `<div class="day"><div style="font-weight:800;margin-bottom:8px">${d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+        ${items.map(({ i, t }) => `<div class="task ${t.done ? 'done' : ''}">
+          <input type="checkbox" data-tog="${i.id}|${t.id}" ${t.done ? 'checked' : ''} />
+          <span style="flex:1;font-size:13px">${esc(t.text)}
+<span class="muted">${t.scheduled.slice(11)} · ${esc(i.title)}</span></span></div>`).join('')
+          || '<p class="muted">Free</p>'}
+      </div>`;
+    }).join('')}</div>`;
+}
+
+/* ---------- Play hub ---------- */
+function renderPlay() {
+  const lvl = Math.floor(state.xp / 100) + 1;
+  $('#play').innerHTML = `
+    <div class="row" style="margin-bottom:12px">
+      <span class="badge yes">Level ${lvl}</span><span class="badge">${state.xp} XP</span>
+      <span class="muted">Every idea can become a game. Pick one and play.</span>
+    </div>
+    ${state.ideas.length ? state.ideas.map(i => {
+      const r = recommend(i);
+      return `<div class="card row" style="justify-content:space-between">
+        <div style="flex:1;min-width:200px"><h3 style="margin:0 0 4px">${esc(i.title)}</h3>
+        <p class="muted" style="margin:0"><b>${GAMES[r.game]}</b> · ${esc(r.reason)}</p></div>
+        <button class="btn" data-play="${i.id}">▶ Play</button></div>`;
+    }).join('') : '<p class="muted">Dump an idea first. Every idea can become a game.</p>'}`;
+}
+
+/* ---------- games ---------- */
+function coverFor(title) {
+  const c = document.createElement('canvas'); c.width = c.height = 600;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 600, 600);
+  gr.addColorStop(0, '#0b1a33'); gr.addColorStop(1, '#ffb800');
+  g.fillStyle = gr; g.fillRect(0, 0, 600, 600);
+  g.fillStyle = '#fff'; g.font = 'bold 56px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  const lines = []; let line = '';
+  for (const w of title.split(' ')) {
+    if ((line + ' ' + w).trim().length > 16) { lines.push(line); line = w; }
+    else line = (line + ' ' + w).trim();
+  }
+  lines.push(line);
+  const L = lines.filter(Boolean).slice(0, 6);
+  L.forEach((l, k) => g.fillText(l, 300, 300 + (k - (L.length - 1) / 2) * 70));
+  return c.toDataURL();
+}
+function hintFor(i, w) {
+  const s = sentences(i).find(x => x.toLowerCase().includes(w));
+  return s ? s.replace(new RegExp(reEsc(w), 'ig'), '_____') : `${w.length} letters, starts with "${w[0]}"`;
+}
+
+function startQuest(i) {
+  const box = $('#gameBody');
+  const draw = () => {
+    const done = i.tasks.filter(t => t.done).length, total = i.tasks.length;
+    box.innerHTML = total
+      ? `<p class="muted">Clear each quest to earn 10 XP. Clear them all to beat the boss.</p>
+         <div class="bar"><div style="width:${done / total * 100}%"></div></div>
+         <div style="margin-top:10px">${i.tasks.map(t => `<div class="task ${t.done ? 'done' : ''}">
+           <span style="flex:1">${t.done ? '✅' : '⚔️'} ${esc(t.text)}</span>
+           <button class="btn ${t.done ? 'ghost' : ''}" data-quest="${t.id}">${t.done ? 'Undo' : 'Complete'}</button></div>`).join('')}</div>
+         ${done === total ? '<h3 style="color:var(--ok);margin-top:14px">🏆 Boss defeated. Every quest cleared!</h3>' : ''}`
+      : '<p class="muted">No quests yet. Add steps to the idea, or click "Suggest steps" in the idea.</p>';
+  };
+  box.onclick = e => { const b = e.target.closest('[data-quest]'); if (!b) return; toggleTask(i.id, b.dataset.quest); draw(); };
+  draw();
+}
+
+function startScramble(i) {
+  const box = $('#gameBody');
+  const pool = keywords(i).filter(w => w.length >= 4 && w.length <= 9 && new Set(w).size > 1).slice(0, 6);
+  if (!pool.length) { box.innerHTML = '<p class="muted">Not enough words yet. Add more detail to the idea.</p>'; return; }
+  let idx = 0, score = 0, w = '', hintOn = false;
+  const finish = () => { state.xp += score; save(); renderAll(); box.innerHTML = `<h2>Done! 🎉</h2><p>You earned <b>${score} XP</b>.</p>`; };
+  const draw = () => {
+    w = pool[idx]; hintOn = false;
+    let scr; do { scr = shuffle([...w]).join(''); } while (scr === w);
+    box.innerHTML = `<p class="muted">Word ${idx + 1} of ${pool.length} · Score ${score}</p>
+      <div class="word">${[...scr].join(' ').toUpperCase()}</div>
+      <p class="muted">Hint: ${esc(hintFor(i, w))}</p>
+      <div class="row">
+        <input id="gAns" placeholder="Unscramble it" autocomplete="off" style="flex:1" />
+        <button class="btn" id="gCheck">Check</button>
+        <button class="btn ghost" id="gHint">Reveal letter</button>
+      </div>`;
+    $('#gAns').focus();
+  };
+  box.onclick = e => {
+    if (e.target.id === 'gHint') { hintOn = true; e.target.textContent = `Starts with "${w[0].toUpperCase()}"`; return; }
+    if (e.target.id !== 'gCheck') return;
+    if ($('#gAns').value.trim().toLowerCase() === w) {
+      score += hintOn ? 5 : 10; idx++;
+      idx >= pool.length ? finish() : draw();
+    } else toast('Not quite. Try again.');
+  };
+  box.onkeydown = e => { if (e.key === 'Enter' && e.target.id === 'gAns') $('#gCheck').click(); };
+  draw();
+}
+
+function startQuiz(i) {
+  const box = $('#gameBody');
+  const kws = keywords(i).slice(0, 12);
+  const pool = ['plan', 'focus', 'goal', 'timeline', 'priority', 'milestone', 'review', 'budget'];
+  const qs = [], used = new Set();
+  if (kws.length >= 4) for (const s of sentences(i)) {
+    const w = kws.find(k => !used.has(k) && new RegExp(`\\b${reEsc(k)}\\b`, 'i').test(s));
+    if (!w) continue;
+    used.add(w);
+    const opts = [w, ...shuffle(kws.filter(k => k !== w)).slice(0, 3)];
+    for (const p of shuffle([...pool])) { if (opts.length >= 4) break; if (!opts.includes(p)) opts.push(p); }
+    qs.push({ q: s.replace(new RegExp(`\\b${reEsc(w)}\\b`, 'i'), '_____'), answer: w, opts: shuffle(opts) });
+    if (qs.length === 5) break;
+  }
+  if (!qs.length) { box.innerHTML = '<p class="muted">Add a few full sentences and the quiz will build itself.</p>'; return; }
+  let n = 0, score = 0, answered = false;
+  const draw = () => {
+    const q = qs[n]; answered = false;
+    box.innerHTML = `<p class="muted">Question ${n + 1} of ${qs.length} · Score ${score}</p>
+      <h3>Fill in the blank</h3><p style="font-size:18px">${esc(q.q)}</p>
+      ${q.opts.map(o => `<button class="opt" data-o="${esc(o)}">${esc(o)}</button>`).join('')}
+      <div id="qNext" style="margin-top:10px"></div>`;
+  };
+  box.onclick = e => {
+    const b = e.target.closest('[data-o]');
+    if (b && !answered) {
+      answered = true; const q = qs[n];
+      if (b.dataset.o === q.answer) { score++; b.classList.add('right'); }
+      else {
+        b.classList.add('wrong');
+        [...box.querySelectorAll('[data-o]')].find(x => x.dataset.o === q.answer)?.classList.add('right');
+      }
+      $('#qNext').innerHTML = `<button class="btn" id="nextQ">${n + 1 < qs.length ? 'Next' : 'Finish'}</button>`;
+      return;
+    }
+    if (e.target.id === 'nextQ') {
+      n++;
+      if (n >= qs.length) {
+        const xp = score * 10; state.xp += xp; save(); renderAll();
+        box.innerHTML = `<h2>${score}/${qs.length} correct</h2><p>+${xp} XP</p>`;
+      } else draw();
+    }
+  };
+  draw();
+}
+
+function startPuzzle(i) {
+  const box = $('#gameBody');
+  const att = i.attachments.find(a => (a.kind === 'image' || a.kind === 'sketch') && a.blob);
+  const src = att ? urlFor(att) : coverFor(i.title);
+  const neighbors = b => {
+    const r = Math.floor(b / 3), c = b % 3, m = [];
+    if (r > 0) m.push(b - 3); if (r < 2) m.push(b + 3);
+    if (c > 0) m.push(b - 1); if (c < 2) m.push(b + 1);
+    return m;
+  };
+  let tiles = [0, 1, 2, 3, 4, 5, 6, 7, 8], count = 0;
+  const solved = () => tiles.every((t, p) => t === p);
+  do {
+    for (let s = 0; s < 150; s++) {
+      const b = tiles.indexOf(8), m = neighbors(b), t = m[Math.floor(Math.random() * m.length)];
+      [tiles[b], tiles[t]] = [tiles[t], tiles[b]];
+    }
+  } while (solved());
+  const draw = () => {
+    const cells = tiles.map((t, p) => t === 8
+      ? '<div class="tile empty"></div>'
+      : `<div class="tile" data-pos="${p}" style="background-image:url('${src}');background-position:${(t % 3) * 50}% ${Math.floor(t / 3) * 50}%"></div>`
+    ).join('');
+    box.innerHTML = `<p class="muted">Slide the tiles back into order. Tap a tile next to the empty space. Moves: ${count}</p><div class="tiles">${cells}</div>`;
+  };
+  box.onclick = e => {
+    const el = e.target.closest('[data-pos]'); if (!el) return;
+    const p = +el.dataset.pos, b = tiles.indexOf(8);
+    if (!neighbors(b).includes(p)) return;
+    [tiles[b], tiles[p]] = [tiles[p], tiles[b]]; count++;
+    if (solved()) {
+      state.xp += 30; save(); renderAll();
+      box.innerHTML = `<h2>Solved! 🎉</h2><p>${count} moves. +30 XP.</p>`;
+    } else draw();
+  };
+  draw();
+}
+
+function play(id, type = 'auto') {
+  const i = getIdea(id); if (!i) return;
+  if (type === 'auto') type = recommend(i).game;
+  $('#gameTitle').textContent = `${GAMES[type]} · ${i.title}`;
+  $('#gameBody').innerHTML = '';
+  ({ quest: startQuest, scramble: startScramble, quiz: startQuiz, puzzle: startPuzzle })[type](i);
+  openOv('gameOverlay');
+}
+
+/* ---------- backup: export and restore (includes images and audio) ---------- */
+function blobToDataURL(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(blob);
+  });
+}
+function dataURLToBlob(dataURL) {
+  const [head, b64] = dataURL.split(',');
+  const mime = (head.match(/:(.*?);/) || [])[1] || 'application/octet-stream';
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+async function exportBackup() {
+  try {
+    const blobs = {};
+    for (const idea of state.ideas) for (const a of idea.attachments) {
+      if (a.blob) blobs[a.id] = await blobToDataURL(a.blob);
+    }
+    const clean = {
+      ...state,
+      ideas: state.ideas.map(i => ({ ...i, attachments: i.attachments.map(({ blob, ...rest }) => rest) }))
+    };
+    const payload = { app: 'hive', version: 2, exportedAt: new Date().toISOString(), state: clean, blobs };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+    const a = Object.assign(document.createElement('a'), { href: url, download: 'hive-backup.json' });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('Backup saved');
+  } catch (err) {
+    alert('Backup failed: ' + err.message);
+  }
+}
+
+async function importBackup(file) {
+  let data;
+  try { data = JSON.parse(await file.text()); }
+  catch { throw new Error('That file is not valid JSON.'); }
+  // Accept old MINDiCAL backups too
+  if (!['hive', 'mindical'].includes(data.app) || !data.state || !Array.isArray(data.state.ideas)) {
+    throw new Error('This file is not a Hive backup.');
+  }
+  const count = data.state.ideas.length;
+  if (!confirm(`Restore ${count} idea${count === 1 ? '' : 's'}? This replaces everything currently in Hive.`)) return;
+
+  const blobs = data.blobs || {};
+  const ideas = data.state.ideas.map(i => ({
+    ...newIdea({}),
+    ...i,
+    attachments: (i.attachments || []).map(a => {
+      let blob = null;
+      if (blobs[a.id]) { try { blob = dataURLToBlob(blobs[a.id]); } catch {} }
+      return { ...a, blob };
+    })
+  }));
+
+  clearTimeout(saveTimer);
+  state = { xp: 0, focus: 0, days: {}, ...data.state, ideas };
+  await dbPut('state', state);
+  location.reload();
+}
+
+/* ---------- navigation & render ---------- */
+function renderAll() { renderRecent(); renderIdeas(); renderToday(); renderWeek(); renderPlay(); }
+function show(v) {
+  for (const s of ['capture', 'ideas', 'today', 'week', 'play']) $('#' + s).classList.toggle('hidden', s !== v);
+  $$('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+  renderAll();
+}
+
+/* ---------- capture: recording, sketch, files, paste ---------- */
+let mediaRec = null, chunks = [];
+$('#recBtn').onclick = async () => {
+  if (mediaRec && mediaRec.state === 'recording') return mediaRec.stop();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    chunks = []; mediaRec = new MediaRecorder(stream);
+    mediaRec.ondataavailable = e => chunks.push(e.data);
+    mediaRec.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      addAttachment('pending', { id: uid(), kind: 'audio', name: 'voice-' + Date.now() + '.webm', blob: new Blob(chunks, { type: mediaRec.mimeType || 'audio/webm' }) });
+      $('#recBtn').textContent = '🎙 Voice note';
+    };
+    mediaRec.start(); $('#recBtn').textContent = '⏹ Stop recording';
+  } catch (err) { toast('Microphone not available'); }
+};
+
+const sc = $('#sketchCanvas'), sx = sc.getContext('2d');
+let drawing = false;
+function resetSketch() {
+  sx.fillStyle = '#fff'; sx.fillRect(0, 0, sc.width, sc.height);
+  sx.strokeStyle = '#111'; sx.lineWidth = 5; sx.lineCap = 'round'; sx.lineJoin = 'round';
+}
+const canvasPos = e => { const r = sc.getBoundingClientRect(); return [(e.clientX - r.left) * sc.width / r.width, (e.clientY - r.top) * sc.height / r.height]; };
+sc.style.touchAction = 'none';
+sc.addEventListener('pointerdown', e => { drawing = true; sx.beginPath(); sx.moveTo(...canvasPos(e)); });
+sc.addEventListener('pointermove', e => { if (drawing) { sx.lineTo(...canvasPos(e)); sx.stroke(); } });
+window.addEventListener('pointerup', () => drawing = false);
+function openSketch(target) { addTarget = target; resetSketch(); openOv('sketchOverlay'); }
+$('#sketchBtn').onclick = () => openSketch('pending');
+$('#clearSketch').onclick = resetSketch;
+$('#cancelSketch').onclick = () => closeOv('sketchOverlay');
+$('#saveSketch').onclick = () => sc.toBlob(b => {
+  addAttachment(addTarget, { id: uid(), kind: 'sketch', name: 'sketch-' + Date.now() + '.png', blob: b });
+  closeOv('sketchOverlay'); toast('Sketch added');
+}, 'image/png');
+
+$('#fileIn').onchange = e => { for (const f of e.target.files) addAttachment('pending', fileToAtt(f)); e.target.value = ''; };
+$('#pendingList').addEventListener('click', e => {
+  const id = e.target.dataset.delAtt;
+  if (id) { pending = pending.filter(a => a.id !== id); renderPending(); }
+});
+document.addEventListener('paste', e => {
+  if ($$('.overlay.open').length) return;
+  const img = [...(e.clipboardData?.items || [])].find(it => it.type.startsWith('image/'));
+  if (!img) return;
+  addAttachment('pending', { id: uid(), kind: 'image', name: 'pasted-' + Date.now() + '.png', blob: img.getAsFile() });
+  show('capture'); toast('Screenshot added');
+});
+
+$('#saveIdea').onclick = () => {
+  const title = $('#newTitle').value.trim(), body = $('#newBody').value.trim();
+  if (!title && !body && !pending.length) return toast('Dump something first');
+  const atts = pending; pending = [];
+  state.ideas.unshift(newIdea({ title: title || body.split(/[.\n]/)[0].slice(0, 60) || 'Untitled idea', body, attachments: atts }));
+  $('#newTitle').value = ''; $('#newBody').value = '';
+  save(); renderPending(); renderAll(); toast('Saved to Inbox ✨');
+};
+
+/* ---------- idea modal events ---------- */
+$('#ideaBody').addEventListener('click', e => {
+  const i = getIdea(currentId); if (!i) return;
+  const t = e.target;
+  if (t.id === 'closeIdea') return closeOv('ideaOverlay');
+  if (t.id === 'addTask') {
+    const txt = $('#newTask').value.trim(); if (!txt) return;
+    i.tasks.push({ id: uid(), text: txt, done: false, mins: +$('#newMins').value || 30, scheduled: '' });
+  }
+  else if (t.id === 'autoSteps') {
+    const s = autoSteps(i);
+    if (!s.length) return toast('No action lines found yet. Write a few sentences first.');
+    i.tasks.push(...s);
+  }
+  else if (t.id === 'summarize') { $('#summary').textContent = summarize(i); return; }
+  else if (t.id === 'playBtn') { i.game = $('#gameSel').value; save(); return play(i.id, i.game); }
+  else if (t.id === 'deleteIdea') {
+    if (!confirm('Delete this idea?')) return;
+    state.ideas = state.ideas.filter(x => x.id !== i.id);
+    save(); closeOv('ideaOverlay'); return renderAll();
+  }
+  else if (t.id === 'mSketch') return openSketch(i.id);
+  else if (t.matches('[data-tdel]')) i.tasks = i.tasks.filter(x => x.id !== t.closest('[data-task]').dataset.task);
+  else if (t.dataset.delAtt) i.attachments = i.attachments.filter(a => a.id !== t.dataset.delAtt);
+  else if (t.dataset.ocr) return runOCR(i, i.attachments.find(a => a.id === t.dataset.ocr));
+  else return;
+  save(); renderIdea(); renderAll();
+});
+
+$('#ideaBody').addEventListener('change', e => {
+  const i = getIdea(currentId); if (!i) return;
+  const t = e.target;
+  if (t.matches('[data-tdone]')) return toggleTask(i.id, t.closest('[data-task]').dataset.task);
+  if (t.matches('[data-tsched]')) {
+    const k = i.tasks.find(x => x.id === t.closest('[data-task]').dataset.task);
+    if (k) k.scheduled = t.value;
+  }
+  else if (t.id === 'eTitle') i.title = t.value.trim() || 'Untitled idea';
+  else if (t.id === 'eBody') i.body = t.value;
+  else if (t.id === 'eStatus') i.status = t.value;
+  else if (t.id === 'ePriority') i.priority = +t.value;
+  else if (t.id === 'eDue') i.due = t.value;
+  else if (t.dataset.clar) i.clarify[t.dataset.clar] = t.value;
+  else if (t.id === 'eFile') { for (const f of t.files) i.attachments.push(fileToAtt(f)); renderIdea(); }
+  else return;
+  save(); renderAll();
+});
+
+/* ---------- global clicks ---------- */
+document.addEventListener('click', e => {
+  const t = e.target;
+  const opener = t.closest('[data-open]'); if (opener) return openIdea(opener.dataset.open);
+  const playBtn = t.closest('[data-play]'); if (playBtn) return play(playBtn.dataset.play, 'auto');
+  const tog = t.closest('[data-tog]'); if (tog) { const [iid, tid] = tog.dataset.tog.split('|'); return toggleTask(iid, tid); }
+  const tm = t.closest('[data-timer]'); if (tm) return tm.dataset.timer === 'toggle' ? toggleTimer() : resetTimer();
+  if (t.closest('[data-autoplan]')) return autoPlan();
+  if (t.closest('[data-reminders]')) return enableReminders();
+});
+
+/* ---------- filters, nav & overlays ---------- */
+['search', 'statusFilter', 'catFilter'].forEach(id => {
+  $('#' + id).addEventListener('input', renderIdeas);
+  $('#' + id).addEventListener('change', renderIdeas);
+});
+$$('nav button').forEach(b => b.onclick = () => show(b.dataset.view));
+$('#exportBtn').onclick = exportBackup;
+$('#restoreFile').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  try { await importBackup(f); }
+  catch (err) { alert(err.message); }
+  e.target.value = '';
+});
+$('#gameClose').onclick = () => closeOv('gameOverlay');
+$$('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) closeOv(o.id); }));
+
+/* ---------- start ---------- */
+function seed() {
+  state.ideas.push(newIdea({
+    title: 'Learn Spanish basics for June trip',
+    body: 'I want to learn Spanish basics before my trip in June.\nVocabulary matters most: greetings, numbers, food and directions.\nPractice ten new words every day with flashcards.\nReview the list every Sunday and book a tutor session.',
+    tags: ['spanish', 'travel'], priority: 1, status: 'active',
+    tasks: [{ id: uid(), text: 'Make a list of 30 core words', done: false, mins: 30, scheduled: '' }]
+  }));
+  state.ideas.push(newIdea({
+    title: 'Landing page sketch',
+    body: 'Hero section with one big promise. Three feature cards. Pricing sits under the fold. Need a clear button and a short story about the team.'
+  }));
+}
+
+(async function init() {
+  show('capture');
+  announce();
+  try {
+    db = await openDB();
+    const saved = await dbGet('state');
+    if (saved) state = { ...state, ...saved };
+    else { seed(); save(); }
+  } catch (err) {
+    toast('Storage is unavailable. Changes will not be saved.');
+  }
+  resetSketch();
+  show('capture');
+  checkReminders();
+  setInterval(checkReminders, 30 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkReminders(); });
+})();
+</script>
+<script type="module" src="push.js"></script>
+</body>
+</html>
