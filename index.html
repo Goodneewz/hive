@@ -58,6 +58,67 @@ textarea{min-height:110px;resize:vertical}
 .opt.wrong{border-color:var(--bad);color:var(--bad)}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--accent);color:#111;padding:10px 16px;border-radius:10px;font-weight:700;display:none;z-index:50}
 @media(max-width:640px){main{padding:14px}.big{font-size:40px}}
+/* ===== Hive visual upgrade ===== */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes modalIn { from { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: none; } }
+@keyframes shine { to { background-position: 250% center; } }
+@keyframes pop { from { opacity: 0; transform: translate(-50%, 20px) scale(.9); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+@keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,184,0,.45); } 50% { box-shadow: 0 0 0 8px rgba(255,184,0,0); } }
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(900px 500px at 10% -10%, rgba(255,184,0,.12), transparent 60%),
+    radial-gradient(800px 500px at 110% 10%, rgba(99,102,241,.14), transparent 60%),
+    var(--bg);
+}
+header { backdrop-filter: blur(10px); background: rgba(7,13,26,.82); }
+
+.brand {
+  font-size: 24px;
+  background: linear-gradient(90deg, #ffb800, #ff7a18, #ffe27a, #ffb800);
+  background-size: 250% auto;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  animation: shine 5s linear infinite;
+}
+.brand::before { content: "🐝 "; -webkit-text-fill-color: initial; }
+
+nav button[data-view="capture"]::before { content: "✏️ "; }
+nav button[data-view="ideas"]::before { content: "💡 "; }
+nav button[data-view="today"]::before { content: "☀️ "; }
+nav button[data-view="week"]::before { content: "🗓️ "; }
+nav button[data-view="play"]::before { content: "🎮 "; }
+
+section:not(.hidden) { animation: fadeUp .4s ease both; }
+.grid > .card { animation: fadeUp .45s ease both; }
+.grid > .card:nth-child(2) { animation-delay: .05s; }
+.grid > .card:nth-child(3) { animation-delay: .1s; }
+.grid > .card:nth-child(4) { animation-delay: .15s; }
+.grid > .card:nth-child(5) { animation-delay: .2s; }
+
+.card { transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+.card:hover { transform: translateY(-3px); border-color: rgba(255,184,0,.35); box-shadow: 0 12px 30px rgba(0,0,0,.35); }
+.card > h3::before { content: "✦ "; color: var(--accent); }
+
+.btn { transition: transform .15s ease, box-shadow .2s ease, background .2s ease; }
+.btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(255,184,0,.25); }
+.btn:active { transform: scale(.96); }
+
+input:focus, textarea:focus, select:focus {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255,184,0,.2);
+}
+.bar > div { background: linear-gradient(90deg, #ffb800, #ff7a18); }
+.badge.yes { animation: glow 2.4s ease-in-out infinite; }
+.task { transition: background .2s ease; border-radius: 8px; }
+.task:hover { background: rgba(255,255,255,.03); }
+
+.overlay.open .modal { animation: modalIn .25s ease both; }
+.toast { animation: pop .3s ease both; box-shadow: 0 10px 25px rgba(0,0,0,.4); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
 </style>
 </head>
 <body>
