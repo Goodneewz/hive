@@ -1058,18 +1058,7 @@ $('#gameClose').onclick = () => closeOv('gameOverlay');
 $$('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) closeOv(o.id); }));
 
 /* ---------- start ---------- */
-function seed() {
-  state.ideas.push(newIdea({
-    title: 'Learn Spanish basics for June trip',
-    body: 'I want to learn Spanish basics before my trip in June.\nVocabulary matters most: greetings, numbers, food and directions.\nPractice ten new words every day with flashcards.\nReview the list every Sunday and book a tutor session.',
-    tags: ['spanish', 'travel'], priority: 1, status: 'active',
-    tasks: [{ id: uid(), text: 'Make a list of 30 core words', done: false, mins: 30, scheduled: '' }]
-  }));
-  state.ideas.push(newIdea({
-    title: 'Landing page sketch',
-    body: 'Hero section with one big promise. Three feature cards. Pricing sits under the fold. Need a clear button and a short story about the team.'
-  }));
-}
+const SAMPLE_TITLES = ['Learn Spanish basics for June trip', 'Landing page sketch'];
 
 (async function init() {
   show('capture');
@@ -1078,17 +1067,31 @@ function seed() {
     db = await openDB();
     const saved = await dbGet('state');
     if (saved) state = { ...state, ...saved };
-    else { seed(); save(); }
+    if (!state.samplesRemoved) {
+      state.ideas = state.ideas.filter(i => !SAMPLE_TITLES.includes(i.title));
+      state.samplesRemoved = true;
+      save();
+    }
   } catch (err) {
     toast('Storage is unavailable. Changes will not be saved.');
   }
   resetSketch();
   show('capture');
+  announce();
   checkReminders();
   setInterval(checkReminders, 30 * 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) checkReminders(); });
 })();
+
+// Called by push.js when the account has newer ideas than this device.
+window.hiveReplaceState = async newState => {
+  clearTimeout(saveTimer);
+  state = { xp: 0, focus: 0, days: {}, ...newState, samplesRemoved: true };
+  await dbPut('state', state);
+  location.reload();
+};
 </script>
 <script type="module" src="push.js"></script>
+<script src="games.js" defer></script>
 </body>
 </html>
