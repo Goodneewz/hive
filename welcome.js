@@ -1,6 +1,6 @@
 /* welcome.js — first-visit sign-up screen for Hive.
-   Shows once per browser. Uses the sign-in box from push.js
-   (window.hivePush.openAccount), so Firebase settings stay in push.js. */
+   Shows once per browser, and never for someone already signed in.
+   Uses the sign-in box from push.js (window.hivePush.openAccount). */
 (() => {
   'use strict';
   const FLAG = 'hive-welcomed';
@@ -79,7 +79,12 @@
     ov.classList.remove('open');
   }
 
-  // Opens the existing sign-in box from push.js and returns it.
+  // True when push.js reports a signed-in account (not anonymous).
+  function alreadySignedIn() {
+    return document.body.dataset.account === 'in';
+  }
+
+  // Opens the sign-in box from push.js and returns it.
   function openBox() {
     if (!window.hivePush || typeof window.hivePush.openAccount !== 'function') return null;
     window.hivePush.openAccount();
@@ -94,7 +99,7 @@
     msg.textContent = '';
 
     if (name === 'anon') {
-      // push.js already signs the device in anonymously on load.
+      // push.js signs the device in anonymously in the background.
       finish();
       return;
     }
@@ -127,12 +132,12 @@
       return true;
     };
 
-    // Keep the sign-in box open so the user sees the result or any error.
     finish();
     if (!press()) setTimeout(press, 120);
   }
 
   function maybeShow() {
+    if (alreadySignedIn()) { finish(); return; }
     let seen = false;
     try { seen = localStorage.getItem(FLAG) === '1'; } catch (e) { /* ignore */ }
     if (!seen) ov.classList.add('open');

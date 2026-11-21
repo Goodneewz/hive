@@ -1,4 +1,4 @@
-// push.js: accounts (anonymous, email, Google), reminders, and cloud sync (Firebase Spark plan)
+// push.js: accounts, profile, automatic sync and reminders for Hive (Firebase Spark plan)
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
   getAuth, onAuthStateChanged, signInAnonymously, signOut,
@@ -42,10 +42,28 @@ const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const currentUser = () => auth.currentUser;
 const isAccount = u => !!u && !u.isAnonymous;
+const say = (msg, kind = 'ok') => { if (window.hiveToast) window.hiveToast(msg, { kind }); };
 
-/* ---------- account UI ---------- */
+/* ---------- styles for the avatar and profile ---------- */
+if (!document.getElementById('hk-push-css')) {
+  const st = document.createElement('style');
+  st.id = 'hk-push-css';
+  st.textContent = `
+.hk-av{width:40px;height:40px;border-radius:50%;border:2px solid #FFB800;background:#11263F;color:#FFB800;font-weight:800;display:grid;place-items:center;cursor:pointer;padding:0;overflow:hidden;font-size:1rem;transition:transform .15s}
+.hk-av:hover{transform:scale(1.07)}
+.hk-av img{width:100%;height:100%;object-fit:cover}
+.hk-av.out{border-style:dashed;animation:hk-ring 2.4s ease-in-out infinite}
+.hk-av.big{width:64px;height:64px;font-size:1.5rem}
+.hk-prof{display:flex;gap:12px;align-items:center;margin:10px 0}
+@keyframes hk-ring{0%,100%{box-shadow:0 0 0 0 rgba(255,184,0,.45)}50%{box-shadow:0 0 0 7px rgba(255,184,0,0)}}
+@media (prefers-reduced-motion: reduce){.hk-av.out{animation:none}}`;
+  document.head.append(st);
+}
+
+/* ---------- header avatar and account panel ---------- */
 const slot = document.createElement('div');
 slot.className = 'row';
+slot.id = 'accountSlot';
 document.querySelector('header')?.appendChild(slot);
 
 const overlay = document.createElement('div');
@@ -53,44 +71,74 @@ overlay.className = 'overlay';
 overlay.id = 'accountOverlay';
 overlay.innerHTML = '<div class="modal" id="accountBody"></div>';
 document.body.appendChild(overlay);
-const body = $('#accountBody');
+const modalBody = $('#accountBody');
 overlay.addEventListener('click', e => { if (e.target === overlay) closeAccount(); });
+
+const profileKey = uid => 'hive-profile-' + uid;
+function loadProfile(uid) {
+  if (!uid) return {};
+  try { return JSON.parse(localStorage.getItem(profileKey(uid))) || {}; } catch { return {}; }
+}
+function storeProfile(uid, p) { localStorage.setItem(profileKey(uid), JSON.stringify(p)); }
 
 function renderHeader() {
   const u = currentUser();
-  slot.innerHTML = `<button class="btn ghost" id="accountBtn">${isAccount(u) ? '☁️ ' + esc(u.email || 'Account') : '👤 Sign in'}</button>`;
+  const on = isAccount(u);
+  document.body.dataset.account = on ? 'in' : 'out';
+  let inner = '👤';
+  if (on) {
+    const p = loadProfile(u.uid);
+    inner = p.avatar ? `<img src="${p.avatar}" alt="">` : esc((p.username || u.email || 'H').trim().charAt(0).toUpperCase() || 'H');
+  }
+  slot.innerHTML = `<button class="hk-av ${on ? '' : 'out'}" id="accountBtn" aria-label="Account" title="${on ? 'Your profile' : 'Sign in to sync'}">${inner}</button>`;
   $('#accountBtn').onclick = openAccount;
 }
+
 function openAccount() { renderAccount(); overlay.classList.add('open'); }
 function closeAccount() { overlay.classList.remove('open'); }
 function renderAccountIfOpen() { if (overlay.classList.contains('open')) renderAccount(); }
-const setMsg = t => { const m = $('#accMsg', body); if (m) m.textContent = t; };
+const setMsg = t => { const m = $('#accMsg', modalBody); if (m) m.textContent = t; };
+
+function panelHead(title) {
+  return `<div class="row" style="justify-content:space-between;align-items:center">
+    <h3 style="margin:0">${title}</h3>
+    <button class="btn ghost" data-acc="close">Close</button></div>`;
+}
 
 function renderAccount(message = '') {
   const u = currentUser();
-  const synced = Number(localStorage.getItem(TIME_KEY) || 0);
-  const syncedText = synced ? 'Last synced ' + new Date(synced).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ideas sync after each change.';
   if (isAccount(u)) {
-    body.innerHTML = `
-      <div class="row" style="justify-content:space-between">
-        <h3 style="margin:0">☁️ Your account</h3>
-        <button class="btn ghost" data-acc="close">Close</button>
+    const p = loadProfile(u.uid);
+    const synced = Number(localStorage.getItem(TIME_KEY) || 0);
+    const syncedText = synced
+      ? 'Synced ' + new Date(synced).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : 'Syncs automatically after every change.';
+    const avatar = p.avatar ? `<img src="${p.avatar}" alt="">` : esc((p.username || u.email || 'H').charAt(0).toUpperCase());
+    modalBody.innerHTML = `
+      ${panelHead('👤 Your profile')}
+      <div class="hk-prof">
+        <button class="hk-av big" data-acc="photo" title="Change photo">${avatar}</button>
+        <div>
+          <strong>${esc(p.username || 'No username yet')}</strong>
+          <div class="muted">${esc(u.email || '')}</div>
+        </div>
       </div>
-      <p style="margin:12px 0 4px">${esc(u.email || 'Signed in')}</p>
-      <p class="muted">${syncedText}</p>
-      <p class="muted">Text, plans and reminders sync. Photos and voice notes stay on this device.</p>
-      <div class="row" style="margin-top:14px">
-        <button class="btn" data-acc="sync">⟳ Sync now</button>
+      <label class="muted">Username</label>
+      <div class="row" style="margin-top:6px">
+        <input id="accName" maxlength="20" value="${esc(p.username || '')}" placeholder="e.g. david_builds" />
+        <button class="btn" data-acc="saveName">Save</button>
+      </div>
+      <input type="file" id="accFile" accept="image/*" hidden />
+      <p class="muted" style="margin-top:14px">☁️ ${esc(syncedText)} Ideas and plans sync on their own while you're signed in. Photos and voice notes stay on this device.</p>
+      <div class="row" style="margin-top:12px">
+        <button class="btn ghost" data-acc="sync">⟳ Sync now</button>
         <button class="btn ghost" data-acc="signout">Sign out</button>
       </div>
-      <p class="muted" id="accMsg" style="margin-top:12px">${esc(message)}</p>`;
+      <p class="muted" id="accMsg">${esc(message)}</p>`;
   } else {
-    body.innerHTML = `
-      <div class="row" style="justify-content:space-between">
-        <h3 style="margin:0">👤 Sign in to sync</h3>
-        <button class="btn ghost" data-acc="close">Close</button>
-      </div>
-      <p class="muted">Your ideas and reminders follow your account to any device. Anything you've already added stays with you.</p>
+    modalBody.innerHTML = `
+      ${panelHead('👤 Sign in to sync')}
+      <p class="muted">Your ideas, plans and reminders follow your account to any device. Anything you've already added stays with you.</p>
       <input id="accEmail" type="email" placeholder="Email" autocomplete="email" />
       <input id="accPass" type="password" placeholder="Password (6+ characters)" autocomplete="current-password" style="margin-top:8px" />
       <div class="row" style="margin-top:12px">
@@ -100,7 +148,7 @@ function renderAccount(message = '') {
       <div class="row" style="margin-top:12px">
         <button class="btn ghost" data-acc="google">🔐 Continue with Google</button>
       </div>
-      <p class="muted" id="accMsg" style="margin-top:12px">${esc(message)}</p>`;
+      <p class="muted" id="accMsg">${esc(message)}</p>`;
   }
 }
 
@@ -121,72 +169,165 @@ function explain(err) {
   return map[err.code] || ('Sign-in failed: ' + (err.code || err.message));
 }
 
-body.addEventListener('click', async e => {
-  const b = e.target.closest('[data-acc]');
-  if (!b) return;
-  const action = b.dataset.acc;
-  if (action === 'close') return closeAccount();
-
-  if (action === 'signout') {
-    await signOut(auth);
-    localStorage.removeItem(SYNCED_KEY);
-    localStorage.removeItem(TIME_KEY);
-    await signInAnonymously(auth);
-    cloudReady = false;
-    return renderAccount('Signed out. This device keeps working on its own.');
-  }
-
-  if (action === 'sync') {
-    try { await cloudSave(); renderAccount('Synced.'); }
-    catch (err) { renderAccount('Sync failed: ' + (err.message || err.code)); }
-    return;
-  }
-
-  const email = $('#accEmail', body)?.value.trim() || '';
-  const pass = $('#accPass', body)?.value || '';
-  if ((action === 'signin' || action === 'create') && (!email || !pass)) {
-    return setMsg('Enter your email and password.');
-  }
-
-  try {
-    setMsg('Working…');
-    const u = currentUser();
-    const anon = !!u && u.isAnonymous;
-    if (action === 'signin') {
-      await signInWithEmailAndPassword(auth, email, pass);
-    } else if (action === 'create') {
-      if (anon) await linkWithCredential(u, EmailAuthProvider.credential(email, pass));
-      else await createUserWithEmailAndPassword(auth, email, pass);
-    } else if (action === 'google') {
-      if (anon) {
-        try { await linkWithPopup(u, googleProvider); }
-        catch (err) {
-          // This Google account already exists. Sign in to it instead.
-          if (err.code !== 'auth/credential-already-in-use') throw err;
-          await signInWithCredential(auth, GoogleAuthProvider.credentialFromError(err));
-        }
-      } else {
-        await signInWithPopup(auth, googleProvider);
-      }
-    }
-    await ensureSynced();
-    renderHeader();
-    closeAccount();
-  } catch (err) {
-    console.warn('Account action failed', err);
-    setMsg(explain(err));
-  }
-});
-
-/* ---------- auth state ---------- */
-onAuthStateChanged(auth, () => {
+// Profile: username and photo. Stored on the device and in the account's user document.
+async function saveProfile(patch) {
+  const u = currentUser();
+  if (!isAccount(u)) throw new Error('Sign in to save your profile.');
+  const p = { ...loadProfile(u.uid), ...patch };
+  storeProfile(u.uid, p);
   renderHeader();
-  ensureSynced();
+  // Not awaited: Firestore keeps the write and sends it when the connection returns.
+  setDoc(doc(db, 'users', u.uid), { username: p.username || '', avatar: p.avatar || '' }, { merge: true })
+    .catch(err => console.warn('Profile save failed', err));
+}
+
+async function pullProfile(uid) {
+  const snap = await getDoc(doc(db, 'users', uid));
+  if (!snap.exists()) return;
+  const d = snap.data();
+  const local = loadProfile(uid);
+  storeProfile(uid, {
+    username: d.username ?? local.username ?? '',
+    avatar: d.avatar ?? local.avatar ?? ''
+  });
+  renderHeader();
+  renderAccountIfOpen();
+}
+
+// Resizes a picked photo to a small square so it stays light to store and sync.
+function imageToAvatar(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const size = 128;
+      const c = document.createElement('canvas');
+      c.width = c.height = size;
+      const s = Math.min(img.width, img.height);
+      c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Not an image')); };
+    img.src = url;
+  });
+}
+
+body_events();
+function body_events() {
+  modalBody.addEventListener('change', async e => {
+    if (e.target.id !== 'accFile') return;
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      setMsg('Updating photo…');
+      const avatar = await imageToAvatar(file);
+      await saveProfile({ avatar });
+      say('Profile photo updated.', 'done');
+      renderAccount('Photo updated.');
+    } catch (err) {
+      setMsg('Could not use that image. Try another one.');
+    }
+  });
+
+  modalBody.addEventListener('click', async e => {
+    const b = e.target.closest('[data-acc]');
+    if (!b) return;
+    const action = b.dataset.acc;
+    if (action === 'close') return closeAccount();
+
+    if (action === 'photo') return $('#accFile', modalBody).click();
+
+    if (action === 'saveName') {
+      const name = ($('#accName', modalBody)?.value || '').trim();
+      if (name && !/^[a-zA-Z0-9_]{3,20}$/.test(name)) {
+        return setMsg('Use 3 to 20 letters, numbers or underscores.');
+      }
+      try {
+        await saveProfile({ username: name });
+        say('Username saved.', 'done');
+        renderAccount('Saved.');
+      } catch (err) { setMsg(err.message); }
+      return;
+    }
+
+    if (action === 'signout') {
+      await signOut(auth);
+      localStorage.removeItem(SYNCED_KEY);
+      localStorage.removeItem(TIME_KEY);
+      cloudReady = false;
+      closeAccount();
+      say('Signed out. This device keeps working on its own.', 'ok');
+      return; // onAuthStateChanged signs the device in anonymously
+    }
+
+    if (action === 'sync') {
+      setMsg('Syncing…');
+      await ensureSynced();
+      if (cloudReady) say('All synced. 🐝', 'done');
+      else say('Could not sync. Check your connection.', 'warn');
+      renderAccountIfOpen();
+      return;
+    }
+
+    const email = $('#accEmail', modalBody)?.value.trim() || '';
+    const pass = $('#accPass', modalBody)?.value || '';
+    if ((action === 'signin' || action === 'create') && (!email || !pass)) {
+      return setMsg('Enter your email and password.');
+    }
+
+    try {
+      setMsg('Working…');
+      const u = currentUser();
+      const anon = !!u && u.isAnonymous;
+      if (action === 'signin') {
+        await signInWithEmailAndPassword(auth, email, pass);
+      } else if (action === 'create') {
+        if (anon) await linkWithCredential(u, EmailAuthProvider.credential(email, pass));
+        else await createUserWithEmailAndPassword(auth, email, pass);
+      } else if (action === 'google') {
+        if (anon) {
+          try { await linkWithPopup(u, googleProvider); }
+          catch (err) {
+            if (err.code !== 'auth/credential-already-in-use') throw err;
+            await signInWithCredential(auth, GoogleAuthProvider.credentialFromError(err));
+          }
+        } else {
+          await signInWithPopup(auth, googleProvider);
+        }
+      }
+      await ensureSynced();
+      renderHeader();
+      closeAccount();
+      say(action === 'create' ? 'Account created. Your ideas will sync now.' : 'Welcome back 🐝', 'done');
+    } catch (err) {
+      console.warn('Account action failed', err);
+      setMsg(explain(err));
+    }
+  });
+}
+
+/* ---------- auth state ----------
+   Only sign in anonymously when nobody is signed in.
+   This is what stops sync from logging the user out. */
+renderHeader();
+onAuthStateChanged(auth, async u => {
+  if (!u) {
+    cloudReady = false;
+    try { await signInAnonymously(auth); }
+    catch (err) { console.warn('Anonymous sign-in failed', err); }
+    return; // the listener runs again with the anonymous user
+  }
+  renderHeader();
+  if (isAccount(u)) {
+    ensureSynced();
+  } else {
+    cloudReady = false;
+  }
   scheduleReminders();
 });
-signInAnonymously(auth).catch(err => console.warn('Anonymous sign-in failed', err));
 
-/* ---------- cloud sync (one document per account) ---------- */
+/* ---------- cloud sync (one document per account, automatic) ---------- */
 function waitForLocal() {
   return new Promise(resolve => {
     let tries = 0;
@@ -216,11 +357,12 @@ async function cloudSave() {
   const json = JSON.stringify(clean);
   if (json.length > 900000) { console.warn('Ideas are too large to sync in one document'); return; }
   const stamp = Date.now();
+  // merge: true keeps the username and photo stored on the same document.
   await setDoc(doc(db, 'users', u.uid), {
     json,
     updatedAt: Timestamp.fromMillis(stamp),
     ideaCount: clean.ideas.length
-  });
+  }, { merge: true });
   localStorage.setItem(TIME_KEY, String(stamp));
   localStorage.setItem(SYNCED_KEY, u.uid);
   renderAccountIfOpen();
@@ -257,9 +399,16 @@ async function ensureSynced() {
   if (!isAccount(u)) { cloudReady = false; return; }
   if (syncingUid === u.uid) return;
   syncingUid = u.uid;
-  try { await syncWithCloud(u.uid); cloudReady = true; }
-  catch (err) { console.warn('Account sync failed', err); cloudReady = false; }
-  finally { syncingUid = null; }
+  try {
+    await syncWithCloud(u.uid);
+    await pullProfile(u.uid).catch(() => {});
+    cloudReady = true;
+  } catch (err) {
+    console.warn('Account sync failed', err);
+    cloudReady = false;
+  } finally {
+    syncingUid = null;
+  }
 }
 
 function scheduleCloud() {
@@ -269,6 +418,11 @@ function scheduleCloud() {
     if (cloudReady) await cloudSave().catch(err => console.warn('Cloud save failed', err));
   }, 2000);
 }
+
+// Pull changes from other devices when you come back to Hive.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && isAccount(currentUser())) ensureSynced();
+});
 
 /* ---------- reminders ---------- */
 async function getMessagingSafe() {
