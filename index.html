@@ -147,6 +147,7 @@ input:focus, textarea:focus, select:focus {
           <input type="file" id="fileIn" multiple accept="image/*,audio/*,.pdf,.txt,.md,.doc,.docx" hidden />
         </label>
         <span class="muted">Tip: press Ctrl+V to paste a screenshot.</span>
+        <span class="muted" style="display:block;margin-top:6px">Write a time in your dump, like "call Ada at 3pm tomorrow", and Hive plans it for you.</span>
       </div>
       <div id="pendingList" class="thumbs" style="margin-top:12px"></div>
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" id="saveIdea">Save to Inbox</button></div>
@@ -157,6 +158,8 @@ input:focus, textarea:focus, select:focus {
   <section id="ideas" class="hidden">
     <div class="row" style="margin-bottom:14px">
       <input id="search" placeholder="Search ideas..." style="flex:2;min-width:180px" />
+      <input type="date" id="searchDate" title="Saved on this date" style="flex:1;min-width:140px" />
+      <input type="time" id="searchTime" title="Saved at this hour" style="flex:1;min-width:120px" />
       <select id="statusFilter" style="flex:1;min-width:120px">
         <option value="all">All status</option><option value="inbox">Inbox</option><option value="active">Active</option><option value="done">Done</option>
       </select>
@@ -214,7 +217,11 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const fmt = s => `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
-const toast = msg => { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = 'none', 2200); };
+const toast = msg => {
+  if (window.hiveToast) return window.hiveToast(msg);
+  const t = $('#toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = 'none', 2200);
+};
 const openOv = id => $('#' + id).classList.add('open');
 const closeOv = id => $('#' + id).classList.remove('open');
 
@@ -256,6 +263,15 @@ function announce() { window.hiveLatest = state; window.dispatchEvent(new Custom
 const save = () => { if (!db) return; clearTimeout(saveTimer); saveTimer = setTimeout(async () => { await dbPut('state', state); announce(); }, 150); };
 /* ---------- idea model ---------- */
 const getIdea = id => state.ideas.find(i => i.id === id);
+// Reads times from written text and turns them into scheduled steps (uses hive-kit.js).
+// Skips any step whose text is already in the idea, so editing never duplicates steps.
+const timedSteps = (text, existing = []) => {
+  if (!window.hiveKit) return [];
+  const have = new Set(existing.map(t => t.text.toLowerCase()));
+  return hiveKit.planFromText(text)
+    .filter(s => s.hasTime && !have.has(s.text.toLowerCase()))
+    .map(s => ({ id: uid(), text: s.text.slice(0, 120), done: false, mins: 30, scheduled: localStamp(s.when) }));
+};
 const newIdea = o => ({ id: uid(), title: '', body: '', attachments: [], tags: [], status: 'inbox', priority: 2, due: '', createdAt: Date.now(), clarify: { what: '', why: '', done: '', next: '', blocker: '' }, tasks: [], game: 'auto', ...o });
 const markDay = () => (state.days[todayISO()] ||= { done: 0, focus: 0, checkin: '' });
 const allText = i => [i.title, i.body, ...i.attachments.map(a => a.text || '')].join(' ');
@@ -421,6 +437,7 @@ function cardHTML(i) {
   return `<div class="card" data-open="${i.id}" style="cursor:pointer;margin:0">
     <div class="row" style="justify-content:space-between"><span class="badge">${categoryOf(i)}</span><span class="badge">${i.status}</span></div>
     <h3 style="margin:10px 0 6px">${esc(i.title)}</h3>
+    <p class="muted" style="margin:0 0 6px;font-size:12px">🕒 Saved ${window.hiveKit ? hiveKit.formatStamp(i.createdAt) : ''}</p>
     <p class="muted" style="margin:0 0 10px;min-height:40px">${esc(i.body.slice(0, 120))}</p>
     <div class="bar"><div style="width:${progress(i)}%"></div></div>
     <div class="row" style="margin-top:10px">
@@ -433,8 +450,12 @@ function cardHTML(i) {
 }
 function renderIdeas() {
   const q = $('#search').value.trim().toLowerCase(), st = $('#statusFilter').value, cf = $('#catFilter').value;
+  const dt = $('#searchDate').value, tm = $('#searchTime').value;
   const list = state.ideas
-    .filter(i => (st === 'all' || i.status === st) && (cf === 'all' || categoryOf(i) === cf) && (!q || allText(i).toLowerCase().includes(q)))
+    .filter(i => (st === 'all' || i.status === st) && (cf === 'all' || categoryOf(i) === cf))
+    .filter(i => window.hiveKit
+      ? hiveKit.matchIdea(i, { q, from: dt, to: dt, time: tm })
+      : (!q || allText(i).toLowerCase().includes(q)))
     .sort(byPriority);
   $('#ideaList').innerHTML = list.map(cardHTML).join('') || '<p class="muted">Nothing here yet. Dump an idea on the Capture tab.</p>';
 }
@@ -976,7 +997,9 @@ $('#saveIdea').onclick = () => {
   const title = $('#newTitle').value.trim(), body = $('#newBody').value.trim();
   if (!title && !body && !pending.length) return toast('Dump something first');
   const atts = pending; pending = [];
-  state.ideas.unshift(newIdea({ title: title || body.split(/[.\n]/)[0].slice(0, 60) || 'Untitled idea', body, attachments: atts }));
+const idea = newIdea({ title: title || body.split(/[.\n]/)[0].slice(0, 60) || 'Untitled idea', body, attachments: atts });
+idea.tasks = timedSteps(body);
+state.ideas.unshift(idea);
   $('#newTitle').value = ''; $('#newBody').value = '';
   save(); renderPending(); renderAll(); toast('Saved to Inbox ✨');
 };
@@ -1019,7 +1042,12 @@ $('#ideaBody').addEventListener('change', e => {
     if (k) k.scheduled = t.value;
   }
   else if (t.id === 'eTitle') i.title = t.value.trim() || 'Untitled idea';
-  else if (t.id === 'eBody') i.body = t.value;
+  else if (t.id === 'eBody') {
+  i.body = t.value;
+  const added = timedSteps(t.value, i.tasks);
+  i.tasks.push(...added);
+  if (added.length) toast(`Read ${added.length} time${added.length === 1 ? '' : 's'} from your writing`);
+}
   else if (t.id === 'eStatus') i.status = t.value;
   else if (t.id === 'ePriority') i.priority = +t.value;
   else if (t.id === 'eDue') i.due = t.value;
@@ -1041,7 +1069,7 @@ document.addEventListener('click', e => {
 });
 
 /* ---------- filters, nav & overlays ---------- */
-['search', 'statusFilter', 'catFilter'].forEach(id => {
+['search', 'statusFilter', 'catFilter',  'searchDate', 'searchTime'].forEach(id => {
   $('#' + id).addEventListener('input', renderIdeas);
   $('#' + id).addEventListener('change', renderIdeas);
 });
