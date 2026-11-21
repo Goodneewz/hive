@@ -23,8 +23,8 @@ messaging.onBackgroundMessage(payload => {
   });
 });
 
-const CACHE = 'hive-v8';
-const APP_FILES = ['./', 'index.html', 'push.js', 'game.js', 'welcome.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
+const CACHE = 'hive-v9';
+const APP_FILES = ['./', 'index.html', 'push.js', 'game.js', 'welcome.js', 'hive-kit.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
