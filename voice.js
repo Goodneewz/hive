@@ -180,6 +180,7 @@
 
   const css = document.createElement('style');
   css.textContent = `
+#recBtn{display:none!important}
 .hv-vbar{display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:6px;vertical-align:middle}
 .hv-vtime{font-size:13px;font-weight:600;color:#f87171;font-variant-numeric:tabular-nums;display:inline-flex;gap:4px;align-items:center}
 .hv-rec-dot{animation:hvPulse 1.2s ease-in-out infinite}
