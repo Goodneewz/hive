@@ -119,6 +119,11 @@ input:focus, textarea:focus, select:focus {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+/* Sketch window: paper on top, tools below */
+#sketchOverlay .modal{display:flex;flex-direction:column}
+#sketchOverlay .modal > h3{order:-2}
+#sketchOverlay .modal > canvas,
+#sketchOverlay .modal > *:has(> canvas){order:-1}
 </style>
 </head>
 <body>
@@ -960,25 +965,9 @@ $('#recBtn').onclick = async () => {
   } catch (err) { toast('Microphone not available'); }
 };
 
-const sc = $('#sketchCanvas'), sx = sc.getContext('2d');
-let drawing = false;
-function resetSketch() {
-  sx.fillStyle = '#fff'; sx.fillRect(0, 0, sc.width, sc.height);
-  sx.strokeStyle = '#111'; sx.lineWidth = 5; sx.lineCap = 'round'; sx.lineJoin = 'round';
-}
-const canvasPos = e => { const r = sc.getBoundingClientRect(); return [(e.clientX - r.left) * sc.width / r.width, (e.clientY - r.top) * sc.height / r.height]; };
-sc.style.touchAction = 'none';
-sc.addEventListener('pointerdown', e => { drawing = true; sx.beginPath(); sx.moveTo(...canvasPos(e)); });
-sc.addEventListener('pointermove', e => { if (drawing) { sx.lineTo(...canvasPos(e)); sx.stroke(); } });
-window.addEventListener('pointerup', () => drawing = false);
-function openSketch(target) { addTarget = target; resetSketch(); openOv('sketchOverlay'); }
+function openSketch(target) { addTarget = target; openOv('sketchOverlay'); }
 $('#sketchBtn').onclick = () => openSketch('pending');
-$('#clearSketch').onclick = resetSketch;
 $('#cancelSketch').onclick = () => closeOv('sketchOverlay');
-$('#saveSketch').onclick = () => sc.toBlob(b => {
-  addAttachment(addTarget, { id: uid(), kind: 'sketch', name: 'sketch-' + Date.now() + '.png', blob: b });
-  closeOv('sketchOverlay'); toast('Sketch added');
-}, 'image/png');
 
 $('#fileIn').onchange = e => { for (const f of e.target.files) addAttachment('pending', fileToAtt(f)); e.target.value = ''; };
 $('#pendingList').addEventListener('click', e => {
@@ -1103,7 +1092,6 @@ const SAMPLE_TITLES = ['Learn Spanish basics for June trip', 'Landing page sketc
   } catch (err) {
     toast('Storage is unavailable. Changes will not be saved.');
   }
-  resetSketch();
   show('capture');
   announce();
   checkReminders();
