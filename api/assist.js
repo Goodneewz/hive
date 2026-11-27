@@ -82,8 +82,9 @@ module.exports = async (req, res) => {
     });
 
     if (!r.ok) {
+      const detail = await r.text().catch(() => '');
       return res.status(502).json({
-        error: 'The assistant is busy. Hive will use its built-in helper.',
+        error: `Gemini said ${r.status}. ${detail.slice(0, 200)}`,
         fallback: true
       });
     }
