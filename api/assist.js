@@ -1,7 +1,7 @@
 const DAILY_LIMIT = 20;
 const MAX_PROMPT = 6000;
 const TIMEOUT_MS = 15000;
-const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
+const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 const SITE = 'https://hive-arc.vercel.app';
 const counts = new Map();
 
