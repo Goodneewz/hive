@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Hive picture styles</title>
+<style>
+body{font-family:"Segoe UI",Arial,sans-serif;background:#0b1326;color:#e7ecf7;margin:0;padding:20px}
+h1{font-size:20px;margin:0 0 16px}
+.wrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+.card{background:#111c33;border-radius:16px;padding:14px;text-align:center}
+canvas{width:100%;height:auto;border-radius:12px;display:block}
+p{margin:10px 0 0;font-size:15px}
+</style>
+</head>
+<body>
+<h1>Choose a picture style: A, B or C</h1>
+<div class="wrap">
+  <div class="card"><canvas id="a" width="480" height="480"></canvas><p><b>A. Flat illustration</b></p></div>
+  <div class="card"><canvas id="b" width="480" height="480"></canvas><p><b>B. Painted poster</b></p></div>
+  <div class="card"><canvas id="c" width="480" height="480"></canvas><p><b>C. Diagram</b></p></div>
+</div>
+<script>
+// A: flat illustration
+(function () {
+  const g = document.getElementById('a').getContext('2d');
+  g.fillStyle = '#ffd166'; g.fillRect(0, 0, 480, 480);
+  g.fillStyle = '#06d6a0'; g.fillRect(0, 320, 480, 160);
+  g.fillStyle = '#118ab2'; g.beginPath(); g.arc(360, 120, 60, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#ef476f'; g.beginPath(); g.moveTo(120, 320); g.lineTo(200, 160); g.lineTo(280, 320); g.closePath(); g.fill();
+  g.fillStyle = '#073b4c'; g.fillRect(300, 220, 90, 100);
+  g.fillStyle = '#ffffff'; g.beginPath(); g.arc(120, 120, 36, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#073b4c'; g.font = 'bold 28px "Segoe UI", Arial'; g.textAlign = 'center';
+  g.fillText('Your idea', 240, 445);
+})();
+
+// B: painted poster
+(function () {
+  const g = document.getElementById('b').getContext('2d');
+  const grd = g.createLinearGradient(0, 0, 480, 480);
+  grd.addColorStop(0, '#1d3a6e'); grd.addColorStop(1, '#ffb800');
+  g.fillStyle = grd; g.fillRect(0, 0, 480, 480);
+  [[120, 140, 110, '#ffe08a'], [330, 300, 140, '#4fd1c5'], [260, 420, 90, '#ff8fab']].forEach(([x, y, r, col]) => {
+    const rg = g.createRadialGradient(x, y, 0, x, y, r);
+    rg.addColorStop(0, col); rg.addColorStop(1, 'rgba(255,255,255,0)');
+    g.globalAlpha = 0.75; g.fillStyle = rg; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  });
+  g.globalAlpha = 1;
+  const vg = g.createRadialGradient(240, 240, 120, 240, 240, 340);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.45)');
+  g.fillStyle = vg; g.fillRect(0, 0, 480, 480);
+  g.fillStyle = '#ffffff'; g.font = 'bold 30px "Segoe UI", Arial'; g.textAlign = 'center';
+  g.fillText('Your idea', 240, 445);
+})();
+
+// C: diagram
+(function () {
+  const g = document.getElementById('c').getContext('2d');
+  g.fillStyle = '#f4f6fb'; g.fillRect(0, 0, 480, 480);
+  function arrow(x1, y1, x2, y2) {
+    g.strokeStyle = '#1d3a6e'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+    const a = Math.atan2(y2 - y1, x2 - x1);
+    g.fillStyle = '#1d3a6e'; g.beginPath(); g.moveTo(x2, y2);
+    g.lineTo(x2 - 14 * Math.cos(a - 0.4), y2 - 14 * Math.sin(a - 0.4));
+    g.lineTo(x2 - 14 * Math.cos(a + 0.4), y2 - 14 * Math.sin(a + 0.4));
+    g.closePath(); g.fill();
+  }
+  function box(x, y, fill, icon, label) {
+    g.fillStyle = fill; g.strokeStyle = '#1d3a6e'; g.lineWidth = 3;
+    g.beginPath(); g.roundRect(x, y, 140, 80, 14); g.fill(); g.stroke();
+    g.fillStyle = '#1d3a6e'; g.textAlign = 'center';
+    g.font = '24px "Segoe UI Emoji", "Segoe UI", Arial'; g.fillText(icon, x + 70, y + 36);
+    g.font = 'bold 18px "Segoe UI", Arial'; g.fillText(label, x + 70, y + 66);
+  }
+  arrow(240, 110, 120, 198); arrow(240, 110, 360, 198);
+  arrow(120, 282, 200, 366); arrow(360, 282, 280, 366);
+  box(170, 30, '#ffd166', '💡', 'Idea');
+  box(50, 200, '#bde0fe', '🗺️', 'Steps');
+  box(290, 200, '#bde0fe', '🧰', 'Tools');
+  box(170, 370, '#06d6a0', '🏁', 'Goal');
+})();
+</script>
+</body>
+</html>
