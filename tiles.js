@@ -1,5 +1,5 @@
-/* Hive: idea tiles. Keeps the open tile when the idea redraws,
-   places the panels, and sends "Play it" to the game picker. */
+/* Hive: idea tiles. Keeps the open tile, places the panels,
+   and sends "Play it" to the arcade game picker, not Mind Lab. */
 (function () {
   const WHERE = {
     hvAsk: 'assist',
@@ -11,6 +11,7 @@
 
   let openSec = '';
   let openFor = null;
+  let bypass = false;
 
   const body = () => document.getElementById('ideaBody');
 
@@ -54,24 +55,35 @@
     apply();
   }
 
-  // Opens the game picker from the Play it tile.
+  // Opens the nine-game picker for this idea.
   function openPicker() {
+    if (window.hiveArcade && typeof window.hiveArcade.open === 'function') {
+      window.hiveArcade.open(typeof currentId !== 'undefined' ? currentId : undefined);
+      return;
+    }
     const btn = [...document.querySelectorAll('#ideaBody button')]
       .find(x => /Choose a thinking game/.test(x.textContent));
-    if (btn) { btn.click(); return; }
-    if (window.hiveArcade && window.hiveArcade.open && typeof currentId !== 'undefined') {
-      window.hiveArcade.open(currentId);
+    if (btn) {
+      bypass = true;
+      btn.click();
+      bypass = false;
     }
   }
 
-  // Handles tile and Back taps before the idea's own handlers, so the choice is remembered.
+  // Runs first, so Mind Lab and other listeners never see these taps.
   function onClick(e) {
-    if (!e.target || !e.target.closest) return;
-    const tile = e.target.closest('#ideaBody [data-tile]');
-    const back = e.target.closest('#ideaBody [data-back]');
-    if (!tile && !back) return;
+    if (bypass) return;
+    const t = e.target;
+    if (!t || !t.closest) return;
 
-    e.stopPropagation();
+    const tile = t.closest('#ideaBody [data-tile]');
+    const back = t.closest('#ideaBody [data-back]');
+    const btn = t.closest('#ideaBody button');
+    const pick = !!btn && /Choose a thinking game/.test(btn.textContent);
+
+    if (!tile && !back && !pick) return;
+
+    e.stopImmediatePropagation();
     e.preventDefault();
 
     if (back) {
@@ -80,12 +92,12 @@
       return;
     }
 
-    const name = tile.dataset.tile;
-    if (name === 'game') {
+    if (pick || tile.dataset.tile === 'game') {
       openPicker();
       return;
     }
-    openSec = name;
+
+    openSec = tile.dataset.tile;
     apply();
     const b = body();
     if (b) b.scrollIntoView({ block: 'start' });
