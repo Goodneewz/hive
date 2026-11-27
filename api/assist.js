@@ -1,15 +1,20 @@
-const DAILY_LIMIT = 20;
+const DAILY_LIMIT = 60;
 const MAX_PROMPT = 6000;
+const MAX_TURN = 1500;
+const MAX_TURNS = 12;
 const TIMEOUT_MS = 15000;
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 const SITE = 'https://hive-arc.vercel.app';
 const counts = new Map();
 
-const SYSTEM = {
-  questions: 'You are the assistant inside Hive, a personal idea app. Read the user\'s idea. Ask exactly three short, creative clarifying questions, numbered 1 to 3. Each question must refer to a specific detail from the idea. Ask one question per line. Keep the whole reply under 120 words.',
-  summary: 'You are the assistant inside Hive, a personal idea app. Summarise the user\'s idea in three to five plain sentences. Name the goal, the main steps the user mentioned, and any blocker. Do not invent facts that are not in the text. Keep the reply under 120 words.',
-  plan: 'You are the assistant inside Hive, a personal idea app. Suggest up to six practical steps for the idea. Each step is one short line that starts with a verb. Add a time only if the text gives one. Do not invent facts. Keep the reply under 150 words.'
-};
+const ROLE = `You are the assistant inside Hive, a personal idea app. You are a chat partner, not a form.
+Talk naturally and briefly, in plain words. Use details from the user's own idea.
+- If the user has not said what they want, ask one creative clarifying question at a time. Ground it in a specific detail of the idea.
+- If the user asks for a summary, give three to five sentences: the goal, the main steps, and any blocker.
+- If the user asks for steps, suggest up to six short steps. Each starts with a verb. Add a time only if the text gives one.
+- When the user confirms or corrects something, acknowledge it and move on.
+- Never invent facts that are not in the idea or the conversation. If something is missing, ask.
+- Keep each reply under 120 words.`;
 
 function overLimit(ip) {
   const key = ip + '|' + new Date().toISOString().slice(0, 10);
@@ -43,9 +48,8 @@ module.exports = async (req, res) => {
   }
   body = body || {};
 
-  const prompt = String(body.prompt || '').slice(0, MAX_PROMPT).trim();
-  const task = Object.prototype.hasOwnProperty.call(SYSTEM, body.task) ? body.task : 'questions';
-  if (!prompt) {
+  const idea = String(body.prompt || '').slice(0, MAX_PROMPT).trim();
+  if (!idea) {
     return res.status(400).json({ error: 'There is nothing to read yet.', fallback: true });
   }
 
@@ -63,6 +67,17 @@ module.exports = async (req, res) => {
     });
   }
 
+  const incoming = Array.isArray(body.messages) ? body.messages.slice(-MAX_TURNS) : [];
+  const turns = incoming
+    .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string' && m.text.trim())
+    .map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.text.slice(0, MAX_TURN) }]
+    }));
+  if (turns.length === 0 || turns[0].role !== 'user') {
+    turns.unshift({ role: 'user', parts: [{ text: 'Start the conversation. Ask me your first question about my idea.' }] });
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -74,9 +89,9 @@ module.exports = async (req, res) => {
         'x-goog-api-key': key
       },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM[task] }] },
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.8, maxOutputTokens: 500 }
+        systemInstruction: { parts: [{ text: `${ROLE}\n\nThe user's idea:\n${idea}` }] },
+        contents: turns,
+        generationConfig: { temperature: 0.9, maxOutputTokens: 600 }
       }),
       signal: controller.signal
     });
@@ -97,7 +112,7 @@ module.exports = async (req, res) => {
     if (!text) {
       return res.status(502).json({ error: 'No reply came back.', fallback: true });
     }
-    return res.status(200).json({ text, task });
+    return res.status(200).json({ text });
   } catch (e) {
     return res.status(502).json({
       error: 'The assistant did not answer in time. Hive will use its built-in helper.',
