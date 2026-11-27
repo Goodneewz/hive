@@ -44,8 +44,7 @@ const OPTS = {
     { key: 'size', label: 'Maze', options: [[7, '7×7'], [9, '9×9'], [11, '11×11']] }
   ],
   jigsaw: [
-    { key: 'pieces', label: 'Pieces', options: [[3, '3×3'], [4, '4×4']] },
-    { key: 'ref', label: 'Reference', options: [['full', 'Full picture'], ['dimmed', 'Dimmed behind'], ['hidden', 'Hidden']] },
+    { key: 'pieces', label: 'Pieces', options: [[3, '3×3'], [4, '4×4'], [5, '5×5'], [6, '6×6'], [8, '8×8'], ['128', '128 tiles']] },    { key: 'ref', label: 'Reference', options: [['full', 'Full picture'], ['dimmed', 'Dimmed behind'], ['hidden', 'Hidden']] },
     { key: 'timer', label: 'Timer', options: [['off', 'Off'], ['on', 'On']] }
   ],
   rubik: [
@@ -349,14 +348,8 @@ function paintArt(idea, variant, w, h, photo) {
   });
   return c;
 }
-function withArt(idea, variant, w, h, cb) {
-  const url = photoOf(idea);
-  if (!url) { cb(paintArt(idea, variant, w, h, null)); return; }
-  const img = new Image();
-  img.onload = () => cb(paintArt(idea, variant, w, h, img));
-  img.onerror = () => cb(paintArt(idea, variant, w, h, null));
-  img.src = url;
-}
+function withArt(idea, variant, w, h, cb) { cb(hvDiagramArt(idea, variant)); }
+function withArtOld(idea, variant, w, h, cb) {
 
 /* ===================== results ===================== */
 function resultRecord(id, win, pct) {
@@ -1190,7 +1183,245 @@ function gameMaze(sess) {
   build();
   draw();
 }
+function hvJigGrid(v) {
+  const s = String(v || '3');
+  if (s === '128') return { cols: 8, rows: 16 };
+  const k = Math.max(2, Math.min(8, +s || 3));
+  return { cols: k, rows: k };
+}
+
 function gameJigsaw(sess) {
+  const grid = hvJigGrid(sess.cfg.pieces);
+  const cols = grid.cols, rows = grid.rows;
+  const N = cols * rows;
+  const showRef = sess.cfg.ref || 'full';
+  const hasTimer = sess.cfg.timer === 'on';
+  const cell = cols >= 8 ? 46 : Math.floor(380 / cols);
+  const BW = cols * cell, BH = rows * cell;
+  const pad = cell * 0.35;
+  const pSize = cell + pad * 2;
+  const S = 2;
+  let mistakes = 0, placed = 0, elapsed = 0;
+
+  sess.stage.innerHTML = '<p class="arc-note">🎨 Preparing your jigsaw from this idea…</p>';
+
+  withArt(sess.idea, seedOf(sess.id), 480, 480, srcCvs => {
+    if (CUR !== sess || sess.done) return;
+
+    // Fill the board with the picture, cropping instead of stretching.
+    const full = document.createElement('canvas');
+    full.width = BW * S; full.height = BH * S;
+    const fg = full.getContext('2d');
+    const sc = Math.max(full.width / srcCvs.width, full.height / srcCvs.height);
+    const dw = srcCvs.width * sc, dh = srcCvs.height * sc;
+    fg.drawImage(srcCvs, (full.width - dw) / 2, (full.height - dh) / 2, dw, dh);
+    const refImg = full.toDataURL('image/png');
+
+    const hEdges = [], vEdges = [];
+    for (let r = 0; r < rows; r++) {
+      hEdges[r] = [];
+      for (let c = 0; c < cols - 1; c++) hEdges[r][c] = Math.random() < 0.5 ? 1 : -1;
+    }
+    for (let r = 0; r < rows - 1; r++) {
+      vEdges[r] = [];
+      for (let c = 0; c < cols; c++) vEdges[r][c] = Math.random() < 0.5 ? 1 : -1;
+    }
+
+    const pathFor = (g, top, right, bottom, left, x, y, w) => {
+      g.beginPath();
+      g.moveTo(x, y);
+      if (!top) g.lineTo(x + w, y);
+      else {
+        g.lineTo(x + w * 0.35, y);
+        g.bezierCurveTo(x + w * 0.35, y - top * w * 0.25, x + w * 0.65, y - top * w * 0.25, x + w * 0.65, y);
+        g.lineTo(x + w, y);
+      }
+      if (!right) g.lineTo(x + w, y + w);
+      else {
+        g.lineTo(x + w, y + w * 0.35);
+        g.bezierCurveTo(x + w + right * w * 0.25, y + w * 0.35, x + w + right * w * 0.25, y + w * 0.65, x + w, y + w * 0.65);
+        g.lineTo(x + w, y + w);
+      }
+      if (!bottom) g.lineTo(x, y + w);
+      else {
+        g.lineTo(x + w * 0.65, y + w);
+        g.bezierCurveTo(x + w * 0.65, y + w + bottom * w * 0.25, x + w * 0.35, y + w + bottom * w * 0.25, x + w * 0.35, y + w);
+        g.lineTo(x, y + w);
+      }
+      if (!left) g.closePath();
+      else {
+        g.lineTo(x, y + w * 0.65);
+        g.bezierCurveTo(x - left * w * 0.25, y + w * 0.65, x - left * w * 0.25, y + w * 0.35, x, y + w * 0.35);
+        g.closePath();
+      }
+    };
+
+    const pieces = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const idx = r * cols + c;
+        const top = r === 0 ? 0 : -vEdges[r - 1][c];
+        const right = c === cols - 1 ? 0 : hEdges[r][c];
+        const bottom = r === rows - 1 ? 0 : vEdges[r][c];
+        const left = c === 0 ? 0 : -hEdges[r][c - 1];
+        const cvs = document.createElement('canvas');
+        cvs.width = Math.round(pSize * S);
+        cvs.height = Math.round(pSize * S);
+        const g = cvs.getContext('2d');
+        g.setTransform(S, 0, 0, S, 0, 0);
+        pathFor(g, top, right, bottom, left, pad, pad, cell);
+        g.save();
+        g.clip();
+        g.drawImage(full, (c * cell - pad) * S, (r * cell - pad) * S, pSize * S, pSize * S, 0, 0, pSize, pSize);
+        g.restore();
+        g.strokeStyle = 'rgba(255,255,255,0.55)';
+        g.lineWidth = 1.2;
+        pathFor(g, top, right, bottom, left, pad, pad, cell);
+        g.stroke();
+        pieces.push({ idx, cvs, placed: false });
+      }
+    }
+
+    const order = shuffle(pieces.map(p => p.idx));
+    const refMax = 150;
+    const refW = Math.round(refMax * cols / Math.max(cols, rows));
+    const refH = Math.round(refMax * rows / Math.max(cols, rows));
+    let guides = '';
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        guides += `<div class="arc-jig-slot" style="position:absolute;left:${c * cell}px;top:${r * cell}px;width:${cell}px;height:${cell}px;box-sizing:border-box;aspect-ratio:auto"></div>`;
+      }
+    }
+
+    sess.stage.innerHTML =
+      '<p class="arc-note">Drag each piece onto its true spot. A wrong piece stays where you leave it, so you can move it.</p>' +
+      (showRef === 'full' ? `<div class="arc-jig-ref" style="text-align:center;margin:8px auto"><img src="${refImg}" alt="Goal picture" style="width:${refW}px;height:${refH}px;border-radius:10px;display:block;margin:0 auto"><span>Goal picture</span></div>` : '') +
+      `<div class="arc-jig-board" data-hv-fixed="1" style="position:relative;display:block;box-sizing:content-box;width:${BW}px;height:${BH}px;margin:12px auto;padding:0;background:#0b1326;border-radius:10px">` +
+      (showRef === 'dimmed' ? `<div style="position:absolute;inset:0;background:url(${refImg}) center/100% 100%;opacity:.28;pointer-events:none;border-radius:10px"></div>` : '') +
+      guides +
+      '</div>' +
+      '<div class="arc-jig-tray" style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px;max-width:640px;margin:10px auto 0"></div>';
+
+    const tray = sess.stage.querySelector('.arc-jig-tray');
+    const board = sess.stage.querySelector('.arc-jig-board');
+
+    order.forEach(i => {
+      const p = pieces[i];
+      const wrap = document.createElement('div');
+      wrap.className = 'arc-jig-p';
+      wrap.dataset.pid = i;
+      wrap.style.cssText = `position:relative;width:${pSize}px;height:${pSize}px;cursor:grab;touch-action:none;user-select:none`;
+      p.cvs.style.cssText = 'width:100%;height:100%;display:block;pointer-events:none';
+      wrap.appendChild(p.cvs);
+      tray.appendChild(wrap);
+    });
+
+    if (hasTimer) {
+      sess.every(() => {
+        if (CUR !== sess || sess.done) return;
+        elapsed++;
+        sess.hudRefresh();
+      }, 1000);
+    }
+
+    sess.stats = () => {
+      const s = [['Placed', `${placed}/${N}`], ['Mistakes', mistakes]];
+      if (hasTimer) s.push(['Time', mmss(elapsed)]);
+      return s;
+    };
+    sess.hudRefresh();
+
+    let drag = null;
+
+    sess.listen(sess.stage, 'pointerdown', e => {
+      if (CUR !== sess || sess.done) return;
+      const wrap = e.target.closest('.arc-jig-p');
+      if (!wrap || wrap.classList.contains('locked')) return;
+      const pid = +wrap.dataset.pid;
+      if (pieces[pid].placed) return;
+      e.preventDefault();
+      drag = { wrap, pid, id: e.pointerId, sx: e.clientX, sy: e.clientY };
+      wrap.setPointerCapture(e.pointerId);
+      wrap.style.zIndex = '50';
+      wrap.style.cursor = 'grabbing';
+    });
+
+    // The piece follows the finger or cursor exactly, by moving it with transform.
+    sess.listen(sess.stage, 'pointermove', e => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const dx = e.clientX - drag.sx;
+      const dy = e.clientY - drag.sy;
+      drag.wrap.style.transform = `translate(${dx}px, ${dy}px)`;
+    });
+
+    sess.listen(sess.stage, 'pointerup', e => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const d = drag;
+      drag = null;
+      const wrap = d.wrap, pid = d.pid;
+
+      const rect = wrap.getBoundingClientRect();
+      const bRect = board.getBoundingClientRect();
+      const px = rect.left - bRect.left;
+      const py = rect.top - bRect.top;
+      wrap.style.transform = '';
+      wrap.style.cursor = 'grab';
+
+      const cx = px + pad + cell / 2;
+      const cy = py + pad + cell / 2;
+      const inside = cx >= 0 && cy >= 0 && cx < BW && cy < BH;
+
+      if (!inside) {
+        // Dropped away from the board: the piece goes back to the tray with no penalty.
+        tray.appendChild(wrap);
+        wrap.style.position = 'relative';
+        wrap.style.left = '';
+        wrap.style.top = '';
+        wrap.style.zIndex = '';
+        return;
+      }
+
+      const col = Math.floor(cx / cell);
+      const row = Math.floor(cy / cell);
+      const p = pieces[pid];
+
+      if (row * cols + col === pid) {
+        p.placed = true;
+        placed++;
+        wrap.classList.add('locked');
+        wrap.style.cursor = 'default';
+        wrap.style.position = 'absolute';
+        wrap.style.left = `${col * cell - pad}px`;
+        wrap.style.top = `${row * cell - pad}px`;
+        wrap.style.zIndex = '3';
+        board.appendChild(wrap);
+        say('Piece locked in place.', 'ok');
+        sess.hudRefresh();
+
+        if (placed === N) {
+          const pct = clamp(100 - mistakes * 3, 20, 100);
+          endRound(sess, true, pct, [
+            `All ${N} pieces assembled.`,
+            mistakes === 0 ? 'Flawless. Every piece found its place first time.' : `${mistakes} wrong placement${mistakes === 1 ? '' : 's'}.`,
+            hasTimer ? `Finished in ${mmss(elapsed)}.` : 'Corners and edges first make the frame easier.'
+          ]);
+        }
+      } else {
+        // Wrong spot: the piece stays where it was dropped, with no snap-back and no shake.
+        mistakes++;
+        wrap.style.position = 'absolute';
+        wrap.style.left = `${px}px`;
+        wrap.style.top = `${py}px`;
+        wrap.style.zIndex = '2';
+        board.appendChild(wrap);
+        say('Not this spot. Leave it there, or move it to its true place.', 'warn');
+        sess.hudRefresh();
+      }
+    });
+  });
+}
+
+function gameJigsawOld(sess) {
   const k = +sess.cfg.pieces || 3;
   const N = k * k;
   const showRef = sess.cfg.ref || 'full';
@@ -2029,5 +2260,6 @@ if (!window.hiveArcade) {
     open: (ideaId, gameId) => openArc(ideaId ?? null, gameId ?? null),
     play: (id, ideaId) => openArc(ideaId ?? null, id)
   };
+}
 }
 })();
