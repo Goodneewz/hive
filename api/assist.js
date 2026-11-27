@@ -16,6 +16,13 @@ Talk naturally and briefly, in plain words. Use details from the user's own idea
 - Never invent facts that are not in the idea or the conversation. If something is missing, ask.
 - Keep each reply under 120 words.`;
 
+const PLAN_ROLE = `You turn the user's idea into a plan of steps for Hive.
+Reply with JSON only: an array of up to six objects, each with "text" and "time".
+- "text" is one short step that starts with a verb.
+- "time" is a clock time or day only if the idea itself states one, such as "3pm" or "tomorrow". Otherwise use null.
+- Order the steps so the first one can be done today.
+- Never invent facts or times that are not in the idea.`;
+
 function overLimit(ip) {
   const key = ip + '|' + new Date().toISOString().slice(0, 10);
   if (counts.size > 5000) counts.clear();
@@ -55,7 +62,7 @@ module.exports = async (req, res) => {
 
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
-    return res.status(503).json({ error: 'The assistant is not set up yet.', fallback: true });
+    return res.status(503).json({ error: 'The assistant is unavailable right now. Try again later.', fallback: true });
   }
 
   const ip = String(req.headers['x-forwarded-for'] || (req.socket && req.socket.remoteAddress) || 'unknown')
@@ -66,6 +73,8 @@ module.exports = async (req, res) => {
       fallback: true
     });
   }
+
+  const planMode = body.mode === 'plan';
 
   const incoming = Array.isArray(body.messages) ? body.messages.slice(-MAX_TURNS) : [];
   const turns = incoming
@@ -78,6 +87,16 @@ module.exports = async (req, res) => {
     turns.unshift({ role: 'user', parts: [{ text: 'Start the conversation. Ask me your first question about my idea.' }] });
   }
 
+  const systemText = planMode
+    ? `${PLAN_ROLE}\n\nThe user's idea:\n${idea}`
+    : `${ROLE}\n\nThe user's idea:\n${idea}`;
+  const contents = planMode
+    ? [{ role: 'user', parts: [{ text: 'Plan this idea now.' }] }]
+    : turns;
+  const generationConfig = planMode
+    ? { temperature: 0.5, maxOutputTokens: 700, responseMimeType: 'application/json' }
+    : { temperature: 0.9, maxOutputTokens: 600 };
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -89,17 +108,17 @@ module.exports = async (req, res) => {
         'x-goog-api-key': key
       },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: `${ROLE}\n\nThe user's idea:\n${idea}` }] },
-        contents: turns,
-        generationConfig: { temperature: 0.9, maxOutputTokens: 600 }
+        systemInstruction: { parts: [{ text: systemText }] },
+        contents,
+        generationConfig
       }),
       signal: controller.signal
     });
 
     if (!r.ok) {
-      const detail = await r.text().catch(() => '');
+      console.error('Gemini error', r.status, await r.text().catch(() => ''));
       return res.status(502).json({
-        error: `Gemini said ${r.status}. ${detail.slice(0, 200)}`,
+        error: 'The assistant is busy right now. Try again in a moment.',
         fallback: true
       });
     }
@@ -112,6 +131,30 @@ module.exports = async (req, res) => {
     if (!text) {
       return res.status(502).json({ error: 'No reply came back.', fallback: true });
     }
+
+    if (planMode) {
+      let steps = [];
+      try {
+        const arr = JSON.parse(text);
+        steps = (Array.isArray(arr) ? arr : [])
+          .filter(s => s && typeof s.text === 'string' && s.text.trim())
+          .slice(0, 6)
+          .map(s => ({
+            text: s.text.trim().slice(0, 160),
+            time: typeof s.time === 'string' && s.time.trim() ? s.time.trim().slice(0, 40) : null
+          }));
+      } catch (e) {
+        steps = [];
+      }
+      if (!steps.length) {
+        return res.status(502).json({
+          error: 'The assistant could not build a plan this time. Try again.',
+          fallback: true
+        });
+      }
+      return res.status(200).json({ steps });
+    }
+
     return res.status(200).json({ text });
   } catch (e) {
     return res.status(502).json({
