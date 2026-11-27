@@ -23,7 +23,7 @@ messaging.onBackgroundMessage(payload => {
   });
 });
 
-const CACHE = 'hive-v17';
+const CACHE = 'hive-v18';
 const APP_FILES = ['./', 'index.html', 'push.js', 'game.js', 'welcome.js', 'hive-kit.js', './assistant.js', './focus.js', './sketch.js', './voice.js', './arcade.js', './arcade-link.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', event => {
