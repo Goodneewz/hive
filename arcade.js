@@ -349,7 +349,6 @@ function paintArt(idea, variant, w, h, photo) {
   return c;
 }
 function withArt(idea, variant, w, h, cb) { cb(hvDiagramArt(idea, variant)); }
-function withArtOld(idea, variant, w, h, cb) {
 
 /* ===================== results ===================== */
 function resultRecord(id, win, pct) {
@@ -1800,12 +1799,12 @@ function gameMemory(sess) {
     ['Peeks left', Math.max(0, peeksMax - peeks)]
   ];
 
-  sess.every(1000, () => {
+  sess.every(() => {
     if (over || sess.done || phase !== 'memo') return;
     secsLeft--;
     if (secsLeft <= 0) phase = 'rebuild';
     render();
-  });
+  }, 1000);
 
   sess.listen(sess.stage, 'click', e => {
     if (over || sess.done || CUR !== sess) return;
@@ -1818,11 +1817,11 @@ function gameMemory(sess) {
       revealed = true;
       say('Peek used: −10 points. Use it wisely.', 'warn');
       render();
-      sess.later(2000, () => {
+      sess.later(() => {
         if (over || sess.done) return;
         revealed = false;
         render();
-      });
+      }, 2000);
       return;
     }
 
@@ -2260,6 +2259,5 @@ if (!window.hiveArcade) {
     open: (ideaId, gameId) => openArc(ideaId ?? null, gameId ?? null),
     play: (id, ideaId) => openArc(ideaId ?? null, id)
   };
-}
 }
 })();
