@@ -2,6 +2,7 @@
    - Correct pieces lock in their slot.
    - Wrong pieces stay where dropped and can be moved again.
    - Correctly joined pieces merge into a group that moves together.
+   - The tray closes its gaps whenever a piece leaves it, and makes room when one returns.
    - Pieces follow the cursor, even while the page scrolls.
    - The picture shows big at first, then shrinks to a small view. */
 (function () {
@@ -128,23 +129,31 @@
       pieces.forEach(function (p) { p.el.style.zIndex = p.anchored ? 1 : 3; });
     }
 
-    function freeSpot(gid) {
-      for (var i = 0; i < spots.length; i++) {
-        var s = spots[i], busy = false;
-        for (var j = 0; j < pieces.length && !busy; j++) {
-          var q = pieces[j];
-          if (q.gid === gid) continue;
-          if (Math.abs(q.x - s.x) < pitch * 0.7 && Math.abs(q.y - s.y) < pitch * 0.7) busy = true;
-        }
-        if (!busy) return s;
-      }
-      return { x: 12, y: worldH - pSize - 4 };
+    // Tray position, in tray grid order (used to keep the tray closed up).
+    function trayKey(p) {
+      var row = Math.max(0, Math.round((p.y - ty) / pitch));
+      var col = Math.min(trayCols - 1, Math.max(0, Math.round((p.x - 12) / pitch)));
+      return row * trayCols + col;
     }
 
-    function displace(gid) {
-      var G = members(gid), q = G[0];
-      var s = freeSpot(gid);
-      shiftGroup(G, s.x - q.x, s.y - q.y);
+    // Close every gap in the tray, and make room for returned pieces.
+    function packTray() {
+      var seen = {}, units = [];
+      pieces.forEach(function (p) {
+        if (!p.inTray || p.anchored || seen[p.gid]) return;
+        seen[p.gid] = true;
+        var G = members(p.gid);
+        var best = G[0];
+        G.forEach(function (m) { if (trayKey(m) < trayKey(best)) best = m; });
+        units.push({ G: G, anchor: best, key: trayKey(best) });
+      });
+      units.sort(function (a, b) {
+        return a.key - b.key || a.anchor.id - b.anchor.id;
+      });
+      units.forEach(function (u, i) {
+        var s = spots[i];
+        shiftGroup(u.G, s.x - u.anchor.x, s.y - u.anchor.y);
+      });
     }
 
     function anchor(G) {
@@ -152,6 +161,7 @@
         if (!m.anchored) placed++;
         m.x = slotX(m); m.y = slotY(m);
         m.anchored = true;
+        m.inTray = false;
         place(m);
         m.el.style.cursor = 'default';
         m.el.classList.add('locked');
@@ -163,7 +173,10 @@
         var hit = slots.some(function (s) {
           return Math.hypot(q.x + pSize / 2 - s.x, q.y + pSize / 2 - s.y) < cell * 0.6;
         });
-        if (hit) displace(q.gid);
+        if (hit) {
+          // A piece covering a correct slot goes back to the tray.
+          members(q.gid).forEach(function (m) { m.inTray = true; });
+        }
       });
     }
 
@@ -183,7 +196,7 @@
         var around = [pieceAt(m.r - 1, m.c), pieceAt(m.r + 1, m.c), pieceAt(m.r, m.c - 1), pieceAt(m.r, m.c + 1)];
         for (k = 0; k < around.length; k++) {
           var q = around[k];
-          if (!q || q.gid === gid) continue;
+          if (!q || q.gid === gid || q.anchored) continue;
           var ix = q.x + (m.c - q.c) * cell, iy = q.y + (m.r - q.r) * cell;
           if (near(m.x, m.y, ix, iy)) {
             shiftGroup(G, ix - m.x, iy - m.y);
@@ -227,7 +240,6 @@
         for (var i = 0; i < drag.scrollers.length; i++) {
           if (canScroll(drag.scrollers[i], dir)) scrollBy(drag.scrollers[i], dir * 12);
         }
-        window.scrollBy(0, 0);
         var dy = L.getBoundingClientRect().top - before;
         if (dy) {
           var mv = parseMove(L);
@@ -259,10 +271,17 @@
 
       settle(L.gid);
       var now = members(L.gid), note;
+
+      // Where the piece was let go decides whether it is in the tray.
+      var inArea = (L.y + pSize / 2) > ty - pitch * 0.5;
+      now.forEach(function (m) { m.inTray = !L.anchored && inArea; });
+
       if (L.anchored) {
         note = now.length > 1 ? '🔗 Locked in with its neighbours!' : '✅ Locked in. Nice placement.';
       } else if (now.length > size) {
         note = '🔗 Pieces joined. They move together now.';
+      } else if (inArea) {
+        note = '🧩 Back in the tray. Place it on the board when you are ready.';
       } else {
         var col = Math.floor((L.x + pad + cell / 2 - bx) / cell);
         var row = Math.floor((L.y + pad + cell / 2 - by) / cell);
@@ -276,6 +295,8 @@
           note = '🧩 Pieces you have not placed wait in the tray.';
         }
       }
+
+      packTray();
       msg.textContent = note;
       updateZ();
       sess.hudRefresh();
@@ -402,7 +423,7 @@
         el.className = 'arc-jig-p';
         el.style.cssText = 'position:absolute;touch-action:none;cursor:grab;width:' + pSize + 'px;height:' + pSize + 'px;';
         el.appendChild(pieceCanvas(pr, pcc));
-        pieces.push({ id: id, r: pr, c: pcc, x: 0, y: 0, gid: id, anchored: false, el: el });
+        pieces.push({ id: id, r: pr, c: pcc, x: 0, y: 0, gid: id, anchored: false, inTray: true, el: el });
       }
       for (var k = 0; k < N; k++) {
         var tp = pieces[order[k]];
