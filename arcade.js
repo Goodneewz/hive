@@ -348,8 +348,7 @@ function paintArt(idea, variant, w, h, photo) {
   });
   return c;
 }
-function withArt(idea, variant, w, h, cb) { cb(hvDiagramArt(idea, variant)); }
-
+function withArt(idea, variant, w, h, cb) { cb(window.hvSceneArt ? window.hvSceneArt(idea, variant, w, h) : hvDiagramArt(idea, variant)); }
 /* ===================== results ===================== */
 function resultRecord(id, win, pct) {
   const xp = win ? Math.round(clamp(15 + pct / 5, 5, 60)) : 4;
