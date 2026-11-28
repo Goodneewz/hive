@@ -2099,7 +2099,7 @@ const GAME_FN = {
   word: gameWord,
   risk: gameRisk,
   maze: gameMaze,
-  jigsaw: gameJigsaw,
+  jigsaw: (s) => (window.hvJigsaw ? window.hvJigsaw(s, { endRound, withArt, seedOf, mmss, cur: () => CUR }) : gameJigsaw(s)),
   rubik: gameRubik,
   memory: gameMemory,
   plan: gamePlan,
