@@ -326,10 +326,9 @@
     const A = analyze(idea);
     const qs = buildRound(A);
     S = { idea, A, qs, i: 0, xp: 0, streak: 0, results: [], answered: false, box: null };
-    const board = A.concepts.slice(0, 6).map(c => h('img', { class: 'ml-tile', src: tile(c), alt: c }));
+    const board = A.concepts.slice(0, 6).map((c, i) => h('img', { class: 'ml-tile', src: window.hvVisualNote(c, i + 1, 240, 170).toDataURL(), alt: c }));
     const attached = A.images.slice(0, 4).map(src => h('img', { class: 'ml-tile', src, alt: 'Your attachment' }));
-    const summary = A.sentences.slice(0, 4).map(s => h('p', { class: 'ml-sum' }, s + '.'));
-    show(h('div', { class: 'ml-card' },
+    const summary = [window.hvSummaryBlock ? window.hvSummaryBlock(idea) : h('p', { class: 'ml-muted' }, 'No summary yet.')];    show(h('div', { class: 'ml-card' },
       header('📖 ' + A.title),
       h('h4', {}, 'Summary'),
       summary.length ? summary : h('p', { class: 'ml-muted' }, 'Write a few full sentences about this idea to unlock sentence puzzles.'),
