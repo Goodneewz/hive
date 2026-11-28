@@ -1,6 +1,9 @@
-/* jigsaw.js: a real jigsaw. Correct pieces lock in place. Wrong pieces stay
-   where you drop them and can be moved. Correctly joined pieces merge into
-   one group that moves together. Pieces never repel. */
+/* jigsaw.js: a real jigsaw in one file.
+   - Correct pieces lock in their slot.
+   - Wrong pieces stay where dropped and can be moved again.
+   - Correctly joined pieces merge into a group that moves together.
+   - Pieces follow the cursor, even while the page scrolls.
+   - The picture shows big at first, then shrinks to a small view. */
 (function () {
   var TOL = 0.45;
   var current = null;
@@ -33,6 +36,37 @@
   function parseMove(el) {
     var m = /translate\(\s*(-?[\d.]+)px,\s*(-?[\d.]+)px\)/.exec(el.style.transform || '');
     return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : { x: 0, y: 0 };
+  }
+
+  function setMove(el, x, y) {
+    el.style.transform = 'translate(' + x + 'px, ' + y + 'px)';
+  }
+
+  // Scrollable boxes between a piece and the window.
+  function findScrollers(start) {
+    var list = [], el = start.parentElement;
+    while (el && el !== document.documentElement) {
+      var cs = getComputedStyle(el);
+      if (el.scrollHeight > el.clientHeight + 2) {
+        if (cs.overflowY === 'hidden' || cs.overflowY === 'clip') el.style.overflowY = 'auto';
+        if (cs.overflowY !== 'visible') list.push(el);
+      }
+      el = el.parentElement;
+    }
+    return list;
+  }
+
+  function canScroll(el, d) {
+    if (el === window) {
+      return d < 0 ? window.scrollY > 0
+        : window.scrollY + window.innerHeight < document.documentElement.scrollHeight - 1;
+    }
+    return d < 0 ? el.scrollTop > 0 : el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+  }
+
+  function scrollBy(el, px) {
+    if (el === window) window.scrollBy(0, px);
+    else el.scrollTop += px;
   }
 
   window.addEventListener('pointermove', function (e) { if (current) current.move(e); });
@@ -69,7 +103,7 @@
     }
 
     var pieces = [], placed = 0, mistakes = 0, elapsed = 0;
-    var drag = null, syncOn = false;
+    var drag = null, syncOn = false, scrollRaf = 0;
     var msg, world, boardEl;
 
     function place(p) {
@@ -164,6 +198,7 @@
     }
 
     function finish() {
+      drag = null;
       var pct = Math.max(40, 100 - mistakes * 4);
       h.endRound(sess, true, pct, [
         'All ' + N + ' jigsaw pieces assembled.',
@@ -180,14 +215,27 @@
       });
     }
 
-    function startSync() {
-      if (syncOn) return;
-      syncOn = true;
-      (function frame() {
-        if (!drag) { syncOn = false; return; }
-        syncMembers();
-        requestAnimationFrame(frame);
-      })();
+    // Scroll the boxes near the window edges while dragging, and keep the
+    // piece under the cursor by cancelling the movement the scroll causes.
+    function autoScroll() {
+      if (!drag) { scrollRaf = 0; return; }
+      var H = window.innerHeight, y = drag.cy;
+      var dir = y < 110 ? -1 : (y > H - 110 ? 1 : 0);
+      if (dir) {
+        var L = drag.leader.el;
+        var before = L.getBoundingClientRect().top;
+        for (var i = 0; i < drag.scrollers.length; i++) {
+          if (canScroll(drag.scrollers[i], dir)) scrollBy(drag.scrollers[i], dir * 12);
+        }
+        window.scrollBy(0, 0);
+        var dy = L.getBoundingClientRect().top - before;
+        if (dy) {
+          var mv = parseMove(L);
+          setMove(L, mv.x, mv.y - dy);
+          syncMembers();
+        }
+      }
+      scrollRaf = requestAnimationFrame(autoScroll);
     }
 
     function onMove(e) {
@@ -196,7 +244,8 @@
       mv.x += e.clientX - drag.lx;
       mv.y += e.clientY - drag.ly;
       drag.lx = e.clientX; drag.ly = e.clientY;
-      L.el.style.transform = 'translate(' + mv.x + 'px, ' + mv.y + 'px)';
+      drag.cy = e.clientY;
+      setMove(L.el, mv.x, mv.y);
       syncMembers();
     }
 
@@ -239,10 +288,45 @@
         var G = members(p.gid);
         if (G.some(function (m) { return m.anchored; })) return;
         e.preventDefault();
-        drag = { leader: p, gid: p.gid, lx: e.clientX, ly: e.clientY, size: G.length };
+        drag = {
+          leader: p, gid: p.gid, size: G.length,
+          lx: e.clientX, ly: e.clientY, cy: e.clientY,
+          scrollers: findScrollers(p.el)
+        };
         G.forEach(function (m) { m.el.style.zIndex = 4; });
-        startSync();
+        if (!scrollRaf) scrollRaf = requestAnimationFrame(autoScroll);
       });
+    }
+
+    function buildPreview(src) {
+      var box = document.createElement('div');
+      box.style.cssText = 'text-align:center;margin:0 0 8px;';
+      var cv = document.createElement('canvas');
+      cv.style.cssText = 'display:block;margin:0 auto 6px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.45);';
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.style.cssText = 'font-size:13px;padding:4px 12px;border-radius:14px;border:none;background:#ffb800;cursor:pointer;';
+      var big = Math.min(300, Math.max(160, window.innerWidth - 60));
+      var small = 96;
+      var mode = 'big';
+      function draw() {
+        var s = mode === 'big' ? big : small;
+        cv.width = s; cv.height = s;
+        cv.style.width = s + 'px'; cv.style.height = s + 'px';
+        cv.getContext('2d').drawImage(src, 0, 0, s, s);
+        btn.textContent = mode === 'big' ? '🔽 Make it small' : '🔼 Show it big';
+      }
+      btn.addEventListener('click', function () {
+        mode = mode === 'big' ? 'small' : 'big';
+        draw();
+      });
+      draw();
+      box.appendChild(cv);
+      box.appendChild(btn);
+      setTimeout(function () {
+        if (mode === 'big' && h.cur() === sess && !sess.done) { mode = 'small'; draw(); }
+      }, 12000);
+      return box;
     }
 
     function build(src) {
@@ -359,6 +443,7 @@
       });
 
       wrap.appendChild(msg);
+      if (showRef) wrap.appendChild(buildPreview(src));
       wrap.appendChild(world);
       sess.stage.innerHTML = '';
       sess.stage.appendChild(wrap);
@@ -378,7 +463,10 @@
       updateZ();
     }
 
-    current = { move: onMove, up: onUp };
+    current = {
+      move: onMove,
+      up: onUp
+    };
 
     sess.stage.innerHTML = '<p class="arc-note">🎨 Preparing your jigsaw from this idea…</p>';
     h.withArt(sess.idea, h.seedOf(sess.id), 480, 480, function (src) {
